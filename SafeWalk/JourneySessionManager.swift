@@ -5,11 +5,11 @@ import Combine
 final class JourneySessionManager:
     ObservableObject {
 
-    @Published var isJourneyActive =
-        false
+    // MARK: - Published State
 
-    @Published var destinationName =
-        ""
+    @Published var isJourneyActive = false
+
+    @Published var destinationName = ""
 
     @Published var destinationLatitude:
         Double = 0
@@ -32,6 +32,69 @@ final class JourneySessionManager:
     @Published var rerouteCount =
         0
 
+    @Published private(set) var lastUpdatedDate:
+        Date?
+
+
+    // MARK: - Computed State
+
+    var destinationCoordinate:
+        CLLocationCoordinate2D? {
+
+        guard isJourneyActive else {
+            return nil
+        }
+
+        guard
+            CLLocationCoordinate2DIsValid(
+                CLLocationCoordinate2D(
+                    latitude:
+                        destinationLatitude,
+                    longitude:
+                        destinationLongitude
+                )
+            )
+        else {
+            return nil
+        }
+
+        return CLLocationCoordinate2D(
+            latitude:
+                destinationLatitude,
+            longitude:
+                destinationLongitude
+        )
+    }
+
+    var hasValidPersistedJourney: Bool {
+
+        guard isJourneyActive else {
+            return false
+        }
+
+        guard !destinationName
+            .trimmingCharacters(
+                in:
+                    .whitespacesAndNewlines
+            )
+            .isEmpty
+        else {
+            return false
+        }
+
+        guard destinationCoordinate != nil else {
+            return false
+        }
+
+        guard journeyStartDate != nil else {
+            return false
+        }
+
+        return true
+    }
+
+
+    // MARK: - Storage
 
     private let defaults =
         UserDefaults.standard
@@ -65,27 +128,57 @@ final class JourneySessionManager:
 
         static let rerouteCount =
             "rerouteCount"
+
+        static let lastUpdated =
+            "journeyLastUpdatedDate"
     }
 
+
+    // MARK: - Init
 
     init() {
+
         loadJourney()
+
+        validateLoadedJourney()
     }
 
 
-    // MARK: - Start
+    // MARK: - Start Journey
 
     func startJourney(
         destination: String,
         coordinate:
             CLLocationCoordinate2D,
-        plannedDistance: Double = 0
+        plannedDistance:
+            Double = 0
     ) {
 
-        isJourneyActive = true
+        guard
+            CLLocationCoordinate2DIsValid(
+                coordinate
+            )
+        else {
+            return
+        }
+
+        let cleanedName =
+            destination
+                .trimmingCharacters(
+                    in:
+                        .whitespacesAndNewlines
+                )
+
+        guard !cleanedName.isEmpty else {
+            return
+        }
+
+
+        isJourneyActive =
+            true
 
         destinationName =
-            destination
+            cleanedName
 
         destinationLatitude =
             coordinate.latitude
@@ -97,62 +190,87 @@ final class JourneySessionManager:
             Date()
 
         originalPlannedDistance =
-            plannedDistance
+            max(
+                0,
+                plannedDistance
+            )
 
         currentPlannedDistance =
-            plannedDistance
+            max(
+                0,
+                plannedDistance
+            )
 
-        hasBeenRerouted = false
+        hasBeenRerouted =
+            false
 
-        rerouteCount = 0
+        rerouteCount =
+            0
+
+        touchSession()
 
         saveJourney()
     }
 
 
-    // MARK: - Reroute
+    // MARK: - Record Reroute
 
     func recordReroute(
-        newPlannedDistance: Double
+        newPlannedDistance:
+            Double
     ) {
 
         guard isJourneyActive else {
             return
         }
 
-        hasBeenRerouted = true
+        hasBeenRerouted =
+            true
 
         rerouteCount += 1
 
         currentPlannedDistance =
-            newPlannedDistance
+            max(
+                0,
+                newPlannedDistance
+            )
+
+        touchSession()
 
         saveJourney()
     }
 
 
-    // MARK: - End
+    // MARK: - Update Session
+
+    func markSessionActive() {
+
+        guard isJourneyActive else {
+            return
+        }
+
+        touchSession()
+
+        saveJourney()
+    }
+
+
+    // MARK: - End Journey
 
     func endJourney() {
 
-        isJourneyActive = false
-
-        destinationName = ""
-
-        destinationLatitude = 0
-        destinationLongitude = 0
-
-        journeyStartDate = nil
-
-        originalPlannedDistance = 0
-
-        currentPlannedDistance = 0
-
-        hasBeenRerouted = false
-
-        rerouteCount = 0
+        resetPublishedState()
 
         clearJourney()
+    }
+
+
+    // MARK: - Touch Session
+
+    private func touchSession() {
+
+        lastUpdatedDate =
+            Date()
     }
 
 
@@ -212,6 +330,12 @@ final class JourneySessionManager:
             rerouteCount,
             forKey:
                 Keys.rerouteCount
+        )
+
+        defaults.set(
+            lastUpdatedDate,
+            forKey:
+                Keys.lastUpdated
         )
     }
 
@@ -274,21 +398,214 @@ final class JourneySessionManager:
                     Keys.rerouteCount
             )
 
-        if isJourneyActive {
+        lastUpdatedDate =
+            defaults.object(
+                forKey:
+                    Keys.lastUpdated
+            ) as? Date
+    }
 
-            if destinationName.isEmpty ||
-                (
-                    destinationLatitude == 0 &&
-                    destinationLongitude == 0
-                ) {
 
-                endJourney()
+    // MARK: - Validate Loaded Journey
+
+    private func validateLoadedJourney() {
+
+        guard isJourneyActive else {
+
+            /*
+             If storage says the journey is not
+             active, normalize any leftover data.
+             */
+
+            if hasStoredJourneyData {
+
+                resetPublishedState()
+
+                clearJourney()
             }
+
+            return
+        }
+
+
+        guard
+            !destinationName
+                .trimmingCharacters(
+                    in:
+                        .whitespacesAndNewlines
+                )
+                .isEmpty
+        else {
+
+            invalidatePersistedJourney()
+
+            return
+        }
+
+
+        let coordinate =
+            CLLocationCoordinate2D(
+                latitude:
+                    destinationLatitude,
+                longitude:
+                    destinationLongitude
+            )
+
+
+        guard
+            CLLocationCoordinate2DIsValid(
+                coordinate
+            )
+        else {
+
+            invalidatePersistedJourney()
+
+            return
+        }
+
+
+        guard
+            let startDate =
+                journeyStartDate
+        else {
+
+            invalidatePersistedJourney()
+
+            return
+        }
+
+
+        /*
+         A journey start time in the future
+         indicates corrupted persistence data.
+         */
+
+        if startDate >
+            Date()
+                .addingTimeInterval(60) {
+
+            invalidatePersistedJourney()
+
+            return
+        }
+
+
+        originalPlannedDistance =
+            max(
+                0,
+                originalPlannedDistance
+            )
+
+        currentPlannedDistance =
+            max(
+                0,
+                currentPlannedDistance
+            )
+
+        rerouteCount =
+            max(
+                0,
+                rerouteCount
+            )
+
+
+        if rerouteCount == 0 {
+
+            hasBeenRerouted =
+                false
+        }
+
+
+        /*
+         Existing users may have persisted
+         sessions from before lastUpdatedDate
+         existed.
+         */
+
+        if lastUpdatedDate == nil {
+
+            lastUpdatedDate =
+                journeyStartDate
+
+            saveJourney()
         }
     }
 
 
-    // MARK: - Clear
+    // MARK: - Detect Stored Data
+
+    private var hasStoredJourneyData:
+        Bool {
+
+        defaults.object(
+            forKey:
+                Keys.name
+        ) != nil ||
+
+        defaults.object(
+            forKey:
+                Keys.startDate
+        ) != nil ||
+
+        defaults.object(
+            forKey:
+                Keys.latitude
+        ) != nil ||
+
+        defaults.object(
+            forKey:
+                Keys.longitude
+        ) != nil
+    }
+
+
+    // MARK: - Invalidate
+
+    private func invalidatePersistedJourney() {
+
+        resetPublishedState()
+
+        clearJourney()
+    }
+
+
+    // MARK: - Reset State
+
+    private func resetPublishedState() {
+
+        isJourneyActive =
+            false
+
+        destinationName =
+            ""
+
+        destinationLatitude =
+            0
+
+        destinationLongitude =
+            0
+
+        journeyStartDate =
+            nil
+
+        originalPlannedDistance =
+            0
+
+        currentPlannedDistance =
+            0
+
+        hasBeenRerouted =
+            false
+
+        rerouteCount =
+            0
+
+        lastUpdatedDate =
+            nil
+    }
+
+
+    // MARK: - Clear Persistence
 
     private func clearJourney() {
 
@@ -335,6 +652,11 @@ final class JourneySessionManager:
         defaults.removeObject(
             forKey:
                 Keys.rerouteCount
+        )
+
+        defaults.removeObject(
+            forKey:
+                Keys.lastUpdated
         )
     }
 }

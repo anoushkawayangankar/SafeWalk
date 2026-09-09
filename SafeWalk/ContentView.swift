@@ -34,8 +34,7 @@ struct ContentView: View {
 
                     // MARK: - Active Journey
 
-                    if sessionManager.isJourneyActive &&
-                        !sessionManager.destinationName.isEmpty {
+                    if sessionManager.hasValidPersistedJourney {
 
                         VStack(spacing: 14) {
 

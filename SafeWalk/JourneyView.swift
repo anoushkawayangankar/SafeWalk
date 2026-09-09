@@ -1,3 +1,4 @@
+
 import SwiftUI
 import CoreLocation
 import MapKit
@@ -103,6 +104,19 @@ struct JourneyView: View {
     private var currentDestinationCoordinate:
         CLLocationCoordinate2D? {
 
+        /*
+         When restoring a persisted journey,
+         JourneySessionManager is the source
+         of truth for the destination.
+         */
+
+        if sessionManager.isJourneyActive {
+
+            return sessionManager
+                .destinationCoordinate
+        }
+
+
         if let selectedDestination {
 
             return selectedDestination
@@ -118,31 +132,6 @@ struct JourneyView: View {
             return selected
                 .location
                 .coordinate
-        }
-
-
-        if sessionManager.isJourneyActive {
-
-            let latitude =
-                sessionManager
-                    .destinationLatitude
-
-            let longitude =
-                sessionManager
-                    .destinationLongitude
-
-
-            if latitude != 0 ||
-                longitude != 0 {
-
-                return CLLocationCoordinate2D(
-                    latitude:
-                        latitude,
-
-                    longitude:
-                        longitude
-                )
-            }
         }
 
 
@@ -222,12 +211,10 @@ struct JourneyView: View {
                     destinationSearch
                         .errorMessage {
 
-                    Text(error)
-                        .foregroundStyle(.red)
-                        .font(.caption)
-                        .multilineTextAlignment(
-                            .center
-                        )
+                    searchFailureContent(
+                        error:
+                            error
+                    )
                 }
 
 
@@ -349,7 +336,9 @@ struct JourneyView: View {
                     } else {
 
                         Button(
-                            "Calculate Walking Route"
+                            sessionManager.isJourneyActive
+                                ? "Restore Journey Route"
+                                : "Calculate Walking Route"
                         ) {
 
                             calculateRoute(
@@ -500,13 +489,14 @@ struct JourneyView: View {
 
             guard
                 sessionManager
-                    .isJourneyActive,
+                    .hasValidPersistedJourney,
 
                 !trackingService
                     .isTracking,
 
                 let destination =
-                    currentDestinationCoordinate
+                    sessionManager
+                        .destinationCoordinate
             else {
                 return
             }
@@ -635,6 +625,48 @@ struct JourneyView: View {
     }
 
 
+    // MARK: - Search Failure
+
+    @ViewBuilder
+    private func searchFailureContent(
+        error: String
+    ) -> some View {
+
+        VStack(spacing: 10) {
+
+            Text(error)
+                .font(.caption)
+                .foregroundStyle(
+                    .secondary
+                )
+                .multilineTextAlignment(
+                    .center
+                )
+
+
+            if destinationSearch
+                .canRetry {
+
+                Button {
+
+                    destinationSearch
+                        .retryLastSearch()
+
+                } label: {
+
+                    Label(
+                        "Retry Search",
+                        systemImage:
+                            "arrow.clockwise"
+                    )
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding()
+    }
+
+
     // MARK: - Route Loading
 
     @ViewBuilder
@@ -647,13 +679,17 @@ struct JourneyView: View {
 
 
             Text(
-                "Calculating Walking Route"
+                sessionManager.isJourneyActive
+                    ? "Restoring Journey Route"
+                    : "Calculating Walking Route"
             )
             .font(.headline)
 
 
             Text(
-                "SafeWalk is finding the safest available walking route to your destination."
+                sessionManager.isJourneyActive
+                    ? "SafeWalk is rebuilding the route to your saved destination so journey monitoring can resume."
+                    : "SafeWalk is finding a walking route to your destination."
             )
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -680,16 +716,36 @@ struct JourneyView: View {
 
             Image(
                 systemName:
-                    "exclamationmark.triangle.fill"
+                    sessionManager.isJourneyActive
+                        ? "arrow.clockwise.circle.fill"
+                        : "exclamationmark.triangle.fill"
             )
             .font(.system(size: 38))
             .foregroundStyle(.orange)
 
 
             Text(
-                "Unable to Calculate Route"
+                sessionManager.isJourneyActive
+                    ? "Unable to Restore Journey Route"
+                    : "Unable to Calculate Route"
             )
             .font(.headline)
+
+
+            if sessionManager
+                .isJourneyActive {
+
+                Text(
+                    "Your SafeWalk journey is still saved. SafeWalk needs a route before safety monitoring can resume."
+                )
+                .font(.caption)
+                .foregroundStyle(
+                    .secondary
+                )
+                .multilineTextAlignment(
+                    .center
+                )
+            }
 
 
             if let error =
@@ -718,7 +774,10 @@ struct JourneyView: View {
                 } label: {
 
                     Label(
-                        "Retry Route",
+                        sessionManager.isJourneyActive
+                            ? "Retry Restoration"
+                            : "Retry Route",
+
                         systemImage:
                             "arrow.clockwise"
                     )
@@ -730,7 +789,9 @@ struct JourneyView: View {
             } else {
 
                 Button(
-                    "Try Again"
+                    sessionManager.isJourneyActive
+                        ? "Try Restoring Again"
+                        : "Try Again"
                 ) {
 
                     calculateRoute(
@@ -742,23 +803,59 @@ struct JourneyView: View {
                     )
                 }
                 .buttonStyle(
+                    .borderedProminent
+                )
+            }
+
+
+            if sessionManager
+                .isJourneyActive {
+
+                Divider()
+
+
+                Text(
+                    "If you no longer want to continue this journey, you can end it."
+                )
+                .font(.caption)
+                .foregroundStyle(
+                    .secondary
+                )
+                .multilineTextAlignment(
+                    .center
+                )
+
+
+                Button(
+                    "End Saved Journey",
+                    role:
+                        .destructive
+                ) {
+
+                    finishJourney(
+                        completedSuccessfully:
+                            false
+                    )
+                }
+                .buttonStyle(
                     .bordered
                 )
             }
         }
         .padding()
         .frame(
-            maxWidth: .infinity
+            maxWidth:
+                .infinity
         )
-        .background(
+        .background {
             RoundedRectangle(
                 cornerRadius: 16
             )
             .fill(
-                Color.orange
+                SwiftUI.Color.orange
                     .opacity(0.08)
             )
-        )
+        }
     }
 
 
@@ -1177,6 +1274,8 @@ struct JourneyView: View {
                     "Updating your route..."
                 )
             }
+
+
             rerouteFailureContent()
 
 
@@ -1225,11 +1324,13 @@ struct JourneyView: View {
             endJourneyButton()
         }
     }
-    
+
+
     // MARK: - Reroute Failure
 
     @ViewBuilder
-    private func rerouteFailureContent() -> some View {
+    private func rerouteFailureContent()
+        -> some View {
 
         if let error =
             trackingService
@@ -1253,16 +1354,24 @@ struct JourneyView: View {
 
                 Text(error)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                    .foregroundStyle(
+                        .secondary
+                    )
+                    .multilineTextAlignment(
+                        .center
+                    )
 
 
                 Text(
                     "Your previous route is still available and your SafeWalk journey remains active."
                 )
                 .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                .foregroundStyle(
+                    .secondary
+                )
+                .multilineTextAlignment(
+                    .center
+                )
 
 
                 if trackingService
@@ -1305,15 +1414,15 @@ struct JourneyView: View {
                 maxWidth:
                     .infinity
             )
-            .background(
+            .background {
                 RoundedRectangle(
                     cornerRadius: 16
                 )
                 .fill(
-                    Color.orange
+                    SwiftUI.Color.orange
                         .opacity(0.08)
                 )
-            )
+            }
         }
     }
 
@@ -1335,8 +1444,8 @@ struct JourneyView: View {
             Image(
                 systemName:
                     reason == .offRoute
-                    ? "exclamationmark.triangle.fill"
-                    : "checkmark.shield.fill"
+                        ? "exclamationmark.triangle.fill"
+                        : "checkmark.shield.fill"
             )
             .font(.system(size: 50))
             .foregroundStyle(
@@ -1610,10 +1719,15 @@ struct JourneyView: View {
 
 
                 Text(
-                    "Getting your current location..."
+                    sessionManager.isJourneyActive
+                        ? "Getting your location to restore your journey..."
+                        : "Getting your current location..."
                 )
                 .foregroundStyle(
                     .secondary
+                )
+                .multilineTextAlignment(
+                    .center
                 )
             }
         }
@@ -1656,6 +1770,16 @@ struct JourneyView: View {
                 sessionManager
                     .journeyStartDate
 
+
+            /*
+             Record that the user has reopened
+             the persisted active session.
+             */
+
+            sessionManager
+                .markSessionActive()
+
+
             return
         }
 
@@ -1692,11 +1816,26 @@ struct JourneyView: View {
         }
 
 
+        // MARK: Restore Persisted Journey
+
         if sessionManager
             .isJourneyActive {
 
+            /*
+             After a cold launch, the MKRoute
+             itself no longer exists in memory.
+
+             Rebuild it from the user's current
+             position to the saved destination.
+
+             errorMessage == nil prevents every
+             GPS update from repeatedly retrying
+             a failed MapKit request.
+             */
+
             if routeManager.route == nil &&
                 !routeManager.isLoading &&
+                routeManager.errorMessage == nil &&
                 !trackingService.isTracking {
 
                 calculateRoute(
@@ -1713,12 +1852,13 @@ struct JourneyView: View {
         }
 
 
+        // MARK: New Journey
+
         /*
-         Do NOT continually retry automatically
+         Do not continually retry automatically
          after a route failure.
 
-         The user should explicitly press
-         Retry Route.
+         The user explicitly chooses Retry.
          */
 
         if routeManager.route == nil &&
@@ -1793,11 +1933,11 @@ struct JourneyView: View {
             sessionManager
                 .originalPlannedDistance > 0
 
-            ? sessionManager
-                .originalPlannedDistance
+                ? sessionManager
+                    .originalPlannedDistance
 
-            : displayedRoute?
-                .distance ?? 0
+                : displayedRoute?
+                    .distance ?? 0
 
 
         historyManager
@@ -1890,3 +2030,4 @@ struct JourneyView: View {
         JourneyTrackingService()
     )
 }
+
