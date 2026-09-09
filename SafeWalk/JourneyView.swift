@@ -2,6 +2,7 @@ import SwiftUI
 import CoreLocation
 import MapKit
 import Combine
+import UserNotifications
 
 struct JourneyView: View {
 
@@ -21,6 +22,9 @@ struct JourneyView: View {
 
     @StateObject private var routeManager =
         RouteManager()
+
+    @ObservedObject private var notificationManager =
+        NotificationManager.shared
 
 
     // MARK: - Journey Statistics
@@ -51,9 +55,7 @@ struct JourneyView: View {
     ) {
 
         self.destination = destination
-
-        self.selectedDestination =
-            selectedDestination
+        self.selectedDestination = selectedDestination
     }
 
 
@@ -137,7 +139,7 @@ struct JourneyView: View {
     }
 
 
-    // MARK: - Route To Display
+    // MARK: - Displayed Route
 
     private var displayedRoute: MKRoute? {
 
@@ -179,9 +181,11 @@ struct JourneyView: View {
                 Divider()
 
 
-                // MARK: Permission UI
+                // MARK: Permission Hardening
 
                 locationPermissionContent()
+
+                notificationPermissionContent()
 
 
                 // MARK: Destination Search
@@ -263,7 +267,8 @@ struct JourneyView: View {
 
                     // MARK: Route
 
-                    if let route = displayedRoute {
+                    if let route =
+                        displayedRoute {
 
                         routeInformation(
                             route: route
@@ -273,7 +278,8 @@ struct JourneyView: View {
                         Divider()
 
 
-                        if sessionManager.isJourneyActive {
+                        if sessionManager
+                            .isJourneyActive {
 
                             activeJourneyContent()
 
@@ -288,7 +294,8 @@ struct JourneyView: View {
                         }
 
 
-                    } else if routeManager.isLoading {
+                    } else if routeManager
+                        .isLoading {
 
                         ProgressView(
                             "Calculating walking route..."
@@ -310,7 +317,9 @@ struct JourneyView: View {
                                         destinationCoordinate
                                 )
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(
+                            .borderedProminent
+                        )
                         .disabled(
                             !trackingService
                                 .locationManager
@@ -364,6 +373,9 @@ struct JourneyView: View {
         .onAppear {
 
             prepareJourney()
+
+            notificationManager
+                .refreshPermissionStatus()
         }
 
 
@@ -480,7 +492,8 @@ struct JourneyView: View {
         ) {
 
             guard
-                trackingService.rerouteVersion > 0,
+                trackingService
+                    .rerouteVersion > 0,
 
                 let route =
                     trackingService.route
@@ -497,7 +510,7 @@ struct JourneyView: View {
         }
 
 
-        // MARK: Off Route History
+        // MARK: Off-Route History
 
         .onChange(
             of:
@@ -510,7 +523,8 @@ struct JourneyView: View {
                 .journeyMonitor
                 .isOffRoute {
 
-                journeyWentOffRoute = true
+                journeyWentOffRoute =
+                    true
             }
         }
 
@@ -528,7 +542,8 @@ struct JourneyView: View {
                 .checkInManager
                 .isCheckInActive {
 
-                journeyCheckInTriggered = true
+                journeyCheckInTriggered =
+                    true
             }
         }
 
@@ -544,12 +559,13 @@ struct JourneyView: View {
             if trackingService
                 .isEmergencyEscalationActive {
 
-                journeyCheckInExpired = true
+                journeyCheckInExpired =
+                    true
             }
         }
 
 
-        // MARK: Background Permission Change
+        // MARK: Location Permission Change
 
         .onChange(
             of:
@@ -558,7 +574,8 @@ struct JourneyView: View {
                     .authorizationStatus
         ) {
 
-            guard sessionManager.isJourneyActive
+            guard
+                sessionManager.isJourneyActive
             else {
                 return
             }
@@ -587,9 +604,10 @@ struct JourneyView: View {
             trackingService.locationManager
 
 
-        // MARK: Permission Denied
+        // MARK: Denied
 
-        if locationManager.locationPermissionDenied {
+        if locationManager
+            .locationPermissionDenied {
 
             VStack(spacing: 12) {
 
@@ -622,16 +640,22 @@ struct JourneyView: View {
                     locationManager
                         .openSettings()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(
+                    .borderedProminent
+                )
             }
             .padding()
-            .frame(maxWidth: .infinity)
+            .frame(
+                maxWidth: .infinity
+            )
             .background(
                 RoundedRectangle(
                     cornerRadius: 16
                 )
                 .fill(
-                    Color.red.opacity(0.08)
+                    Color.red.opacity(
+                        0.08
+                    )
                 )
             )
 
@@ -639,8 +663,10 @@ struct JourneyView: View {
         // MARK: Precise Location Off
 
         } else if
-            locationManager.hasLocationPermission &&
-            !locationManager.isPreciseLocationEnabled {
+            locationManager
+                .hasLocationPermission &&
+            !locationManager
+                .isPreciseLocationEnabled {
 
             VStack(spacing: 10) {
 
@@ -671,21 +697,26 @@ struct JourneyView: View {
                 .buttonStyle(.bordered)
             }
             .padding()
-            .frame(maxWidth: .infinity)
+            .frame(
+                maxWidth: .infinity
+            )
             .background(
                 RoundedRectangle(
                     cornerRadius: 16
                 )
                 .fill(
-                    Color.orange.opacity(0.08)
+                    Color.orange.opacity(
+                        0.08
+                    )
                 )
             )
 
 
-        // MARK: Background Permission Missing
+        // MARK: Background Permission
 
         } else if
-            locationManager.authorizationStatus ==
+            locationManager
+                .authorizationStatus ==
                 .authorizedWhenInUse {
 
             VStack(spacing: 10) {
@@ -716,15 +747,141 @@ struct JourneyView: View {
                 .buttonStyle(.bordered)
             }
             .padding()
-            .frame(maxWidth: .infinity)
+            .frame(
+                maxWidth: .infinity
+            )
             .background(
                 RoundedRectangle(
                     cornerRadius: 16
                 )
                 .fill(
-                    Color.secondary.opacity(0.08)
+                    Color.secondary.opacity(
+                        0.08
+                    )
                 )
             )
+        }
+    }
+
+
+    // MARK: - Notification Permission Content
+
+    @ViewBuilder
+    private func notificationPermissionContent()
+        -> some View {
+
+        switch notificationManager
+            .authorizationStatus {
+
+        // MARK: Not Requested
+
+        case .notDetermined:
+
+            VStack(spacing: 10) {
+
+                Label(
+                    "Safety Notifications Recommended",
+                    systemImage:
+                        "bell.badge.fill"
+                )
+                .font(.headline)
+
+
+                Text(
+                    "SafeWalk uses notifications for off-route alerts, periodic safety check-ins, and missed check-in warnings when the app is in the background."
+                )
+                .font(.caption)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+
+
+                Button(
+                    "Enable Notifications"
+                ) {
+
+                    notificationManager
+                        .requestPermission()
+                }
+                .buttonStyle(
+                    .borderedProminent
+                )
+            }
+            .padding()
+            .frame(
+                maxWidth: .infinity
+            )
+            .background(
+                RoundedRectangle(
+                    cornerRadius: 16
+                )
+                .fill(
+                    Color.blue.opacity(
+                        0.08
+                    )
+                )
+            )
+
+
+        // MARK: Denied
+
+        case .denied:
+
+            VStack(spacing: 10) {
+
+                Label(
+                    "Safety Notifications Disabled",
+                    systemImage:
+                        "bell.slash.fill"
+                )
+                .font(.headline)
+                .foregroundStyle(.red)
+
+
+                Text(
+                    "SafeWalk may not be able to alert you about safety check-ins while the app is in the background."
+                )
+                .font(.caption)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+
+
+                Button(
+                    "Open Settings"
+                ) {
+
+                    notificationManager
+                        .openSettings()
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding()
+            .frame(
+                maxWidth: .infinity
+            )
+            .background(
+                RoundedRectangle(
+                    cornerRadius: 16
+                )
+                .fill(
+                    Color.red.opacity(
+                        0.08
+                    )
+                )
+            )
+
+
+        // MARK: Enabled
+
+        case .authorized,
+             .provisional,
+             .ephemeral:
+
+            EmptyView()
+
+
+        @unknown default:
+
+            EmptyView()
         }
     }
 
@@ -751,7 +908,7 @@ struct JourneyView: View {
     }
 
 
-    // MARK: - Start Journey Button
+    // MARK: - Start Journey
 
     @ViewBuilder
     private func startJourneyButton(
@@ -771,7 +928,9 @@ struct JourneyView: View {
                     destinationCoordinate
             )
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(
+            .borderedProminent
+        )
         .disabled(
             !trackingService
                 .locationManager
@@ -825,8 +984,6 @@ struct JourneyView: View {
 
         VStack(spacing: 14) {
 
-            // MARK: Progress
-
             Text("Journey Progress")
                 .font(.headline)
 
@@ -853,8 +1010,8 @@ struct JourneyView: View {
 
                     trackingService
                         .progressManager
-                        .distanceRemaining
-                        / 1000
+                        .distanceRemaining /
+                        1000
                 )
             )
 
@@ -896,9 +1053,10 @@ struct JourneyView: View {
             }
 
 
-            // MARK: Reroute State
+            // MARK: Rerouting
 
-            if trackingService.isRerouting {
+            if trackingService
+                .isRerouting {
 
                 ProgressView(
                     "Updating your route..."
@@ -906,7 +1064,8 @@ struct JourneyView: View {
             }
 
 
-            if sessionManager.hasBeenRerouted {
+            if sessionManager
+                .hasBeenRerouted {
 
                 Label(
                     "Route updated \(sessionManager.rerouteCount) time\(sessionManager.rerouteCount == 1 ? "" : "s")",
@@ -918,7 +1077,7 @@ struct JourneyView: View {
             }
 
 
-            // MARK: Periodic Check
+            // MARK: Periodic Check-In
 
             if trackingService
                 .periodicCheckInManager
@@ -950,7 +1109,7 @@ struct JourneyView: View {
     }
 
 
-    // MARK: - Check-In Content
+    // MARK: - Check-In
 
     @ViewBuilder
     private func checkInContent()
@@ -978,8 +1137,6 @@ struct JourneyView: View {
             )
 
 
-            // MARK: Off Route
-
             if reason == .offRoute {
 
                 Text("Are you okay?")
@@ -1005,8 +1162,6 @@ struct JourneyView: View {
                 }
 
 
-            // MARK: Periodic
-
             } else {
 
                 Text("Safety Check-In")
@@ -1015,13 +1170,11 @@ struct JourneyView: View {
 
 
                 Text(
-                    "Quick safety check. Please confirm that you're okay."
+                    "This is your scheduled SafeWalk safety check-in. Please confirm that you're okay."
                 )
                 .multilineTextAlignment(.center)
             }
 
-
-            // MARK: Countdown
 
             Text(
                 "\(trackingService.checkInManager.secondsRemaining)"
@@ -1039,14 +1192,14 @@ struct JourneyView: View {
                 .foregroundStyle(.secondary)
 
 
-            Button(
-                "I'm Safe"
-            ) {
+            Button("I'm Safe") {
 
                 trackingService
                     .confirmSafe()
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(
+                .borderedProminent
+            )
 
 
             distanceToDestinationContent()
@@ -1102,14 +1255,14 @@ struct JourneyView: View {
                 .font(.headline)
 
 
-            Button(
-                "I'm Safe"
-            ) {
+            Button("I'm Safe") {
 
                 trackingService
                     .confirmSafe()
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(
+                .borderedProminent
+            )
 
 
             NavigationLink {
@@ -1177,13 +1330,15 @@ struct JourneyView: View {
                         true
                 )
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(
+                .borderedProminent
+            )
         }
         .padding()
     }
 
 
-    // MARK: - Distance
+    // MARK: - Distance To Destination
 
     @ViewBuilder
     private func distanceToDestinationContent()
@@ -1202,7 +1357,7 @@ struct JourneyView: View {
     }
 
 
-    // MARK: - Background Status
+    // MARK: - Background Tracking
 
     @ViewBuilder
     private func backgroundTrackingContent()
@@ -1289,7 +1444,7 @@ struct JourneyView: View {
     }
 
 
-    // MARK: - Prepare
+    // MARK: - Prepare Journey
 
     private func prepareJourney() {
 
@@ -1297,10 +1452,12 @@ struct JourneyView: View {
             .prepareLocation()
 
 
-        if sessionManager.isJourneyActive {
+        if sessionManager
+            .isJourneyActive {
 
             journeyStartDate =
-                sessionManager.journeyStartDate
+                sessionManager
+                    .journeyStartDate
 
             return
         }
@@ -1339,7 +1496,8 @@ struct JourneyView: View {
 
         // MARK: Restored Journey
 
-        if sessionManager.isJourneyActive {
+        if sessionManager
+            .isJourneyActive {
 
             if routeManager.route == nil &&
                 !routeManager.isLoading &&
@@ -1385,13 +1543,17 @@ struct JourneyView: View {
             CLLocationCoordinate2D
     ) {
 
-        journeyStartDate = Date()
+        journeyStartDate =
+            Date()
 
-        journeyWentOffRoute = false
+        journeyWentOffRoute =
+            false
 
-        journeyCheckInTriggered = false
+        journeyCheckInTriggered =
+            false
 
-        journeyCheckInExpired = false
+        journeyCheckInExpired =
+            false
 
 
         sessionManager
@@ -1436,6 +1598,7 @@ struct JourneyView: View {
 
         let finalWentOffRoute =
             journeyWentOffRoute ||
+
             trackingService
                 .journeyMonitor
                 .isOffRoute
@@ -1443,15 +1606,18 @@ struct JourneyView: View {
 
         let finalCheckInTriggered =
             journeyCheckInTriggered ||
+
             trackingService
                 .checkInManager
                 .isCheckInActive ||
+
             trackingService
                 .isEmergencyEscalationActive
 
 
         let finalCheckInExpired =
             journeyCheckInExpired ||
+
             trackingService
                 .isEmergencyEscalationActive
 
@@ -1499,13 +1665,17 @@ struct JourneyView: View {
             .clearSelection()
 
 
-        journeyStartDate = nil
+        journeyStartDate =
+            nil
 
-        journeyWentOffRoute = false
+        journeyWentOffRoute =
+            false
 
-        journeyCheckInTriggered = false
+        journeyCheckInTriggered =
+            false
 
-        journeyCheckInExpired = false
+        journeyCheckInExpired =
+            false
     }
 }
 
