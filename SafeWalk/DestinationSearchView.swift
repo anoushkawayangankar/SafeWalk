@@ -3,197 +3,521 @@ import MapKit
 
 struct DestinationSearchView: View {
 
-    @StateObject private var destinationSearch =
-        DestinationSearch()
+    // MARK: - State
 
     @State private var query = ""
 
+    @ObservedObject var destinationSearch:
+        DestinationSearch
+
+
+    // MARK: - Optional Selection Callback
+
+    var onDestinationSelected:
+        ((MKMapItem) -> Void)? = nil
+
+
+    // MARK: - Body
+
     var body: some View {
 
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
 
-            // MARK: - Search Field
+            // MARK: Search Field
 
-            HStack {
+            HStack(spacing: 8) {
 
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
+                Image(
+                    systemName:
+                        "magnifyingglass"
+                )
+                .foregroundStyle(
+                    .secondary
+                )
+
 
                 TextField(
-                    "Search for a destination",
-                    text: $query
+                    "Search destination",
+                    text:
+                        $query
                 )
-                .textInputAutocapitalization(.words)
+                .textInputAutocapitalization(
+                    .words
+                )
                 .autocorrectionDisabled()
+
 
                 if !query.isEmpty {
 
                     Button {
 
                         query = ""
-                        destinationSearch.clearSelection()
+
+                        destinationSearch
+                            .clearResults()
 
                     } label: {
 
                         Image(
-                            systemName: "xmark.circle.fill"
+                            systemName:
+                                "xmark.circle.fill"
                         )
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(
+                            .secondary
+                        )
                     }
+                    .buttonStyle(
+                        .plain
+                    )
                 }
             }
-            .padding()
+            .padding(12)
             .background(
-                Color(.secondarySystemBackground)
-            )
-            .clipShape(
                 RoundedRectangle(
-                    cornerRadius: 14
+                    cornerRadius: 12
+                )
+                .fill(
+                    Color.secondary
+                        .opacity(0.10)
                 )
             )
-            .padding(.horizontal)
 
 
-            // MARK: - Searching
+            // MARK: Search Button
 
-            if destinationSearch.isSearching {
+            Button {
 
-                ProgressView("Searching...")
+                destinationSearch
+                    .search(
+                        for:
+                            query
+                    )
+
+            } label: {
+
+                HStack {
+
+                    if destinationSearch
+                        .isSearching {
+
+                        ProgressView()
+                    }
+
+
+                    Text(
+                        destinationSearch
+                            .isSearching
+                        ? "Searching..."
+                        : "Search"
+                    )
+                }
+                .frame(
+                    maxWidth:
+                        .infinity
+                )
             }
+            .buttonStyle(
+                .borderedProminent
+            )
+            .disabled(
+                destinationSearch
+                    .isSearching
+            )
 
 
-            // MARK: - Error
+            // MARK: Error State
 
             if let error =
-                destinationSearch.errorMessage {
+                destinationSearch
+                    .errorMessage {
 
-                Text(error)
-                    .foregroundStyle(.red)
-                    .font(.caption)
-                    .padding(.horizontal)
-            }
+                VStack(spacing: 10) {
+
+                    Image(
+                        systemName:
+                            "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(
+                        .orange
+                    )
 
 
-            // MARK: - Results
-
-            List {
-
-                ForEach(
-                    Array(
-                        destinationSearch
-                            .searchResults
-                            .enumerated()
-                    ),
-                    id: \.offset
-                ) { _, item in
-
-                    NavigationLink {
-                        
-                        JourneyView(
-                            destination: item.name ?? query,
-                            selectedDestination: item
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(
+                            .secondary
+                        )
+                        .multilineTextAlignment(
+                            .center
                         )
 
-                    } label: {
 
-                        VStack(
-                            alignment: .leading,
-                            spacing: 5
-                        ) {
+                    if destinationSearch
+                        .canRetry {
 
-                            Text(
-                                item.name
-                                    ?? "Unknown Place"
+                        Button {
+
+                            destinationSearch
+                                .retryLastSearch()
+
+                        } label: {
+
+                            Label(
+                                "Retry Search",
+                                systemImage:
+                                    "arrow.clockwise"
                             )
-                            .font(.headline)
-
-                            if let address =
-                                formattedAddress(
-                                    for: item
-                                ) {
-
-                                Text(address)
-                                    .font(.caption)
-                                    .foregroundStyle(
-                                        .secondary
-                                    )
-                            }
                         }
-                        .padding(.vertical, 4)
+                        .buttonStyle(
+                            .bordered
+                        )
                     }
                 }
-            }
-            .listStyle(.plain)
-        }
-
-        .navigationTitle(
-            "Choose Destination"
-        )
-
-        .onChange(of: query) {
-
-            let trimmed =
-                query.trimmingCharacters(
-                    in: .whitespacesAndNewlines
+                .padding()
+                .frame(
+                    maxWidth:
+                        .infinity
                 )
-
-            guard trimmed.count >= 2 else {
-
-                destinationSearch.searchResults = []
-
-                return
+                .background(
+                    RoundedRectangle(
+                        cornerRadius: 12
+                    )
+                    .fill(
+                        Color.orange
+                            .opacity(0.08)
+                    )
+                )
             }
 
-            destinationSearch.search(
-                for: trimmed
-            )
+
+            // MARK: Search Results
+
+            if !destinationSearch
+                .searchResults
+                .isEmpty {
+
+                VStack(
+                    alignment:
+                        .leading,
+                    spacing:
+                        8
+                ) {
+
+                    Text(
+                        "Search Results"
+                    )
+                    .font(.headline)
+
+
+                    ForEach(
+                        Array(
+                            destinationSearch
+                                .searchResults
+                                .enumerated()
+                        ),
+                        id:
+                            \.offset
+                    ) {
+                        index,
+                        item in
+
+                        Button {
+
+                            destinationSearch
+                                .selectDestination(
+                                    item
+                                )
+
+
+                            query =
+                                item.name ??
+                                query
+
+
+                            onDestinationSelected?(
+                                item
+                            )
+
+                        } label: {
+
+                            destinationRow(
+                                item:
+                                    item
+                            )
+                        }
+                        .buttonStyle(
+                            .plain
+                        )
+
+
+                        if index <
+                            destinationSearch
+                                .searchResults
+                                .count - 1 {
+
+                            Divider()
+                        }
+                    }
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(
+                        cornerRadius:
+                            14
+                    )
+                    .fill(
+                        Color.secondary
+                            .opacity(0.07)
+                    )
+                )
+            }
+
+
+            // MARK: Selected Destination
+
+            if let selected =
+                destinationSearch
+                    .selectedDestination {
+
+                selectedDestinationContent(
+                    item:
+                        selected
+                )
+            }
         }
     }
 
 
-    // MARK: - Address Formatter
+    // MARK: - Destination Row
+
+    @ViewBuilder
+    private func destinationRow(
+        item: MKMapItem
+    ) -> some View {
+
+        HStack(
+            alignment:
+                .top,
+            spacing:
+                12
+        ) {
+
+            Image(
+                systemName:
+                    "mappin.circle.fill"
+            )
+            .font(
+                .title2
+            )
+            .foregroundStyle(
+                .blue
+            )
+
+
+            VStack(
+                alignment:
+                    .leading,
+                spacing:
+                    4
+            ) {
+
+                Text(
+                    item.name ??
+                    "Unknown Destination"
+                )
+                .font(
+                    .headline
+                )
+                .foregroundStyle(
+                    .primary
+                )
+
+
+                if let address =
+                    formattedAddress(
+                        for:
+                            item
+                    ) {
+
+                    Text(address)
+                        .font(
+                            .caption
+                        )
+                        .foregroundStyle(
+                            .secondary
+                        )
+                        .multilineTextAlignment(
+                            .leading
+                        )
+                }
+            }
+
+
+            Spacer()
+
+
+            Image(
+                systemName:
+                    "chevron.right"
+            )
+            .font(
+                .caption
+            )
+            .foregroundStyle(
+                .secondary
+            )
+        }
+        .contentShape(
+            Rectangle()
+        )
+        .padding(
+            .vertical,
+            6
+        )
+    }
+
+
+    // MARK: - Selected Destination
+
+    @ViewBuilder
+    private func selectedDestinationContent(
+        item: MKMapItem
+    ) -> some View {
+
+        VStack(
+            alignment:
+                .leading,
+            spacing:
+                8
+        ) {
+
+            Label(
+                "Selected Destination",
+                systemImage:
+                    "checkmark.circle.fill"
+            )
+            .font(
+                .headline
+            )
+            .foregroundStyle(
+                .green
+            )
+
+
+            Text(
+                item.name ??
+                "Destination"
+            )
+            .font(
+                .headline
+            )
+
+
+            if let address =
+                formattedAddress(
+                    for:
+                        item
+                ) {
+
+                Text(address)
+                    .font(
+                        .caption
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
+            }
+
+
+            Button(
+                "Change Destination"
+            ) {
+
+                destinationSearch
+                    .clearSelection()
+
+                query = ""
+            }
+            .buttonStyle(
+                .bordered
+            )
+        }
+        .padding()
+        .frame(
+            maxWidth:
+                .infinity,
+            alignment:
+                .leading
+        )
+        .background(
+            RoundedRectangle(
+                cornerRadius:
+                    14
+            )
+            .fill(
+                Color.green
+                    .opacity(0.08)
+            )
+        )
+    }
+
+
+    // MARK: - Address
 
     private func formattedAddress(
         for item: MKMapItem
     ) -> String? {
 
-        let placemark = item.placemark
+        if #available(
+            iOS 26.0,
+            *
+        ) {
 
-        var parts: [String] = []
+            return item
+                .address?
+                .fullAddress
 
-        if let subLocality =
-            placemark.subLocality {
+        } else {
 
-            parts.append(subLocality)
+            let placemark =
+                item.placemark
+
+
+            let components: [String?] = [
+                placemark.name,
+                placemark.locality,
+                placemark.administrativeArea,
+                placemark.country
+            ]
+
+
+            let address =
+                components
+                    .compactMap { $0 }
+                    .filter {
+                        !$0.isEmpty
+                    }
+                    .joined(
+                        separator:
+                            ", "
+                    )
+
+
+            return address.isEmpty
+                ? nil
+                : address
         }
-
-        if let locality =
-            placemark.locality {
-
-            parts.append(locality)
-        }
-
-        if let administrativeArea =
-            placemark.administrativeArea {
-
-            parts.append(administrativeArea)
-        }
-
-        guard !parts.isEmpty else {
-            return nil
-        }
-
-        return parts.joined(
-            separator: ", "
-        )
     }
 }
 
 
+// MARK: - Preview
+
 #Preview {
 
-    NavigationStack {
-
-        DestinationSearchView()
-    }
+    DestinationSearchView(
+        destinationSearch:
+            DestinationSearch()
+    )
+    .padding()
 }

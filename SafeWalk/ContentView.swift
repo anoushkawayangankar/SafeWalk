@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var destinationSearch =
+        DestinationSearch()
 
     @EnvironmentObject var sessionManager:
         JourneySessionManager
@@ -115,7 +117,10 @@ struct ContentView: View {
 
                             NavigationLink {
 
-                                DestinationSearchView()
+                                DestinationSearchView(
+                                    destinationSearch:
+                                        destinationSearch
+                                )
 
                             } label: {
 
