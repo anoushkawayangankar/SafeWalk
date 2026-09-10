@@ -11,7 +11,7 @@ final class NotificationDelegate:
         NotificationDelegate()
 
     let userConfirmedSafe =
-        PassthroughSubject<Void, Never>()
+        PassthroughSubject<UUID?, Never>()
 
     private override init() {
 
@@ -37,8 +37,15 @@ final class NotificationDelegate:
 
             await MainActor.run {
 
+                let journeyID =
+                    response.notification.request.content.userInfo[
+                        "safeWalkJourneyID"
+                    ] as? String
+
                 self.userConfirmedSafe
-                    .send()
+                    .send(
+                        journeyID.flatMap(UUID.init(uuidString:))
+                    )
             }
         }
     }

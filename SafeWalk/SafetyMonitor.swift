@@ -13,9 +13,7 @@ final class SafetyMonitor: ObservableObject {
     let deviationThreshold:
         CLLocationDistance = 100
 
-    // Keep 1 while testing.
-    // Later change this to 3.
-    let requiredOffRouteChecks = 1
+    let requiredOffRouteChecks = 3
 
     private var consecutiveOffRouteChecks = 0
 
@@ -41,21 +39,24 @@ final class SafetyMonitor: ObservableObject {
         var minimumDistance =
             Double.greatestFiniteMagnitude
 
-        for index in 0..<pointCount {
-
-            let routePoint =
-                points[index]
-
-            let distance =
-                userPoint.distance(
-                    to: routePoint
-                )
-
-            minimumDistance =
-                min(
+        if pointCount == 1 {
+            minimumDistance = userPoint.distance(to: points[0])
+        } else if pointCount > 1 {
+            for index in 0..<(pointCount - 1) {
+                minimumDistance = min(
                     minimumDistance,
-                    distance
+                    distance(
+                        from: userPoint,
+                        toSegmentFrom: points[index],
+                        to: points[index + 1]
+                    )
                 )
+            }
+        }
+
+        guard minimumDistance.isFinite else {
+            reset()
+            return
         }
 
         // IMPORTANT:
@@ -82,12 +83,34 @@ final class SafetyMonitor: ObservableObject {
             isOffRoute = true
         }
 
-        print(
-            "Route distance:",
-            minimumDistance,
-            "Off route:",
-            isOffRoute
+    }
+
+    private func distance(
+        from point: MKMapPoint,
+        toSegmentFrom start: MKMapPoint,
+        to end: MKMapPoint
+    ) -> CLLocationDistance {
+
+        let deltaX = end.x - start.x
+        let deltaY = end.y - start.y
+        let lengthSquared = deltaX * deltaX + deltaY * deltaY
+
+        guard lengthSquared > 0 else {
+            return point.distance(to: start)
+        }
+
+        let projection = (
+            (point.x - start.x) * deltaX +
+            (point.y - start.y) * deltaY
+        ) / lengthSquared
+
+        let clampedProjection = min(max(projection, 0), 1)
+        let closestPoint = MKMapPoint(
+            x: start.x + clampedProjection * deltaX,
+            y: start.y + clampedProjection * deltaY
         )
+
+        return point.distance(to: closestPoint)
     }
 
     // MARK: - Reset

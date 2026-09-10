@@ -31,6 +31,8 @@ final class JourneyMonitor: ObservableObject {
     private var checkInManager:
         CheckInManager?
 
+    private var journeyID: UUID?
+
     // MARK: - Start
 
     func startMonitoring(
@@ -38,7 +40,8 @@ final class JourneyMonitor: ObservableObject {
         destination:
             CLLocationCoordinate2D,
         checkInManager:
-            CheckInManager
+            CheckInManager,
+        journeyID: UUID? = nil
     ) {
 
         self.route = route
@@ -48,6 +51,9 @@ final class JourneyMonitor: ObservableObject {
 
         self.checkInManager =
             checkInManager
+
+        self.journeyID =
+            journeyID
 
         isMonitoring = true
 
@@ -71,15 +77,23 @@ final class JourneyMonitor: ObservableObject {
             return
         }
 
-        guard
-            let route,
-            let destinationCoordinate
-        else {
+        guard let route else {
             return
         }
 
         let coordinate =
             location.coordinate
+
+        // MARK: Arrival
+
+        processArrival(location)
+
+        // MARK: Arrival wins
+
+        if hasArrived {
+
+            return
+        }
 
         // MARK: Route deviation
 
@@ -96,38 +110,6 @@ final class JourneyMonitor: ObservableObject {
 
         distanceFromRoute =
             safetyMonitor.distanceFromRoute
-
-        // MARK: Arrival
-
-        arrivalMonitor
-            .checkArrival(
-                userLocation:
-                    coordinate,
-                destination:
-                    destinationCoordinate
-            )
-
-        hasArrived =
-            arrivalMonitor.hasArrived
-
-        distanceToDestination =
-            arrivalMonitor
-                .distanceToDestination
-
-        // MARK: Arrival wins
-
-        if hasArrived {
-
-            checkInManager?
-                .reset()
-
-            safetyMonitor.reset()
-
-            isOffRoute = false
-            distanceFromRoute = 0
-
-            return
-        }
 
         // MARK: Off Route
 
@@ -160,7 +142,53 @@ final class JourneyMonitor: ObservableObject {
 
         NotificationManager
             .shared
-            .sendOffRouteNotification()
+            .sendOffRouteNotification(
+                journeyID: journeyID
+            )
+    }
+
+    // MARK: - Arrival Only
+
+    func processArrival(
+        _ location: CLLocation
+    ) {
+
+        guard
+            isMonitoring,
+            let destinationCoordinate
+        else {
+            return
+        }
+
+        arrivalMonitor
+            .checkArrival(
+                userLocation:
+                    location,
+                destination:
+                    destinationCoordinate
+            )
+
+        hasArrived =
+            arrivalMonitor.hasArrived
+
+        distanceToDestination =
+            arrivalMonitor
+                .distanceToDestination
+
+        // MARK: Arrival wins
+
+        if hasArrived {
+
+            checkInManager?
+                .reset()
+
+            safetyMonitor.reset()
+
+            isOffRoute = false
+            distanceFromRoute = 0
+
+            return
+        }
     }
 
     // MARK: - Stop
@@ -172,6 +200,7 @@ final class JourneyMonitor: ObservableObject {
         route = nil
         destinationCoordinate = nil
         checkInManager = nil
+        journeyID = nil
 
         safetyMonitor.reset()
         arrivalMonitor.reset()

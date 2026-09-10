@@ -1,5 +1,6 @@
 import SwiftUI
 import MessageUI
+import UIKit
 
 struct EmergencyView: View {
 
@@ -43,6 +44,24 @@ struct EmergencyView: View {
     }
 
 
+    // MARK: - Location URL
+
+    private var currentLocationURL: URL? {
+
+        guard
+            let latitude,
+            let longitude
+        else {
+            return nil
+        }
+
+        return URL(
+            string:
+                "https://maps.apple.com/?ll=\(latitude),\(longitude)"
+        )
+    }
+
+
     // MARK: - Emergency Message
 
     private var emergencyMessage: String {
@@ -56,14 +75,13 @@ struct EmergencyView: View {
         """
 
 
-        if let latitude,
-           let longitude {
+        if let currentLocationURL {
 
             message += """
 
 
             My current location:
-            https://maps.apple.com/?ll=\(latitude),\(longitude)
+            \(currentLocationURL.absoluteString)
             """
         }
 
@@ -148,8 +166,11 @@ struct EmergencyView: View {
                     )
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityHint(
+                    "Opens a text message with your safety alert and current location when available"
+                )
                 .disabled(
-                    emergencyContactPhone.isEmpty
+                    cleanedPhoneNumber.isEmpty
                 )
 
 
@@ -170,23 +191,21 @@ struct EmergencyView: View {
                     )
                 }
                 .buttonStyle(.bordered)
+                .accessibilityHint(
+                    "Opens the Phone app with your trusted contact's number"
+                )
                 .disabled(
-                    emergencyContactPhone.isEmpty
+                    cleanedPhoneNumber.isEmpty
                 )
 
 
                 // MARK: Share Location
 
-                if let latitude,
-                   let longitude,
-                   let locationURL = URL(
-                    string:
-                        "https://maps.apple.com/?ll=\(latitude),\(longitude)"
-                   ) {
+                if let currentLocationURL {
 
                     ShareLink(
                         item:
-                            locationURL,
+                            currentLocationURL,
 
                         subject:
                             Text(
@@ -206,6 +225,9 @@ struct EmergencyView: View {
                         )
                     }
                     .buttonStyle(.bordered)
+                    .accessibilityHint(
+                        "Opens the system share sheet with your current Apple Maps location"
+                    )
                 }
 
 
@@ -224,6 +246,9 @@ struct EmergencyView: View {
                     )
                 }
                 .buttonStyle(.bordered)
+                .accessibilityHint(
+                    "Opens the Phone app with emergency services number 112"
+                )
 
 
                 Divider()
@@ -250,6 +275,17 @@ struct EmergencyView: View {
                             "Longitude: \(longitude)"
                         )
                         .font(.caption)
+
+
+                        if let currentLocationURL {
+
+                            Link(
+                                "Open in Apple Maps",
+                                destination:
+                                    currentLocationURL
+                            )
+                            .font(.caption)
+                        }
 
                     } else {
 
@@ -333,8 +369,9 @@ struct EmergencyView: View {
         }
 
 
-        guard MFMessageComposeViewController
-            .canSendText()
+        guard
+            MFMessageComposeViewController
+                .canSendText()
         else {
 
             showMessagingUnavailableAlert =
@@ -360,10 +397,12 @@ struct EmergencyView: View {
         }
 
 
-        guard let url = URL(
-            string:
-                "tel:\(cleanedPhoneNumber)"
-        )
+        guard
+            let url =
+                URL(
+                    string:
+                        "tel:\(cleanedPhoneNumber)"
+                )
         else {
             return
         }
@@ -379,10 +418,12 @@ struct EmergencyView: View {
 
     private func callEmergencyServices() {
 
-        guard let url = URL(
-            string:
-                "tel:112"
-        )
+        guard
+            let url =
+                URL(
+                    string:
+                        "tel:112"
+                )
         else {
             return
         }
@@ -395,13 +436,25 @@ struct EmergencyView: View {
 }
 
 
+// MARK: - Preview
+
 #Preview {
+
+    let sessionManager =
+        JourneySessionManager()
+
+    let trackingService =
+        JourneyTrackingService(
+            sessionManager:
+                sessionManager
+        )
+
 
     NavigationStack {
 
         EmergencyView()
     }
     .environmentObject(
-        JourneyTrackingService()
+        trackingService
     )
 }

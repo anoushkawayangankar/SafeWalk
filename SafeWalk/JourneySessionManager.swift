@@ -2,8 +2,7 @@ import Foundation
 import CoreLocation
 import Combine
 
-final class JourneySessionManager:
-    ObservableObject {
+final class JourneySessionManager: ObservableObject {
 
     // MARK: - Published State
 
@@ -11,29 +10,55 @@ final class JourneySessionManager:
 
     @Published var destinationName = ""
 
-    @Published var destinationLatitude:
-        Double = 0
+    @Published var destinationLatitude: Double = 0
 
-    @Published var destinationLongitude:
-        Double = 0
+    @Published var destinationLongitude: Double = 0
 
-    @Published var journeyStartDate:
-        Date?
+    @Published var journeyStartDate: Date?
 
-    @Published var originalPlannedDistance:
-        Double = 0
+    @Published var originalPlannedDistance: Double = 0
 
-    @Published var currentPlannedDistance:
-        Double = 0
+    @Published var currentPlannedDistance: Double = 0
 
-    @Published var hasBeenRerouted =
+    @Published var hasBeenRerouted = false
+
+    @Published var rerouteCount = 0
+
+    @Published private(set) var lastUpdatedDate: Date?
+
+    /*
+     Emergency state belongs to the journey
+     session because it must survive app
+     termination, but must never survive after
+     the journey itself has ended.
+     */
+
+    @Published private(set) var isEmergencyEscalationActive =
         false
 
-    @Published var rerouteCount =
-        0
+    /*
+     Persisted arrival state.
 
-    @Published private(set) var lastUpdatedDate:
-        Date?
+     When the user reaches the destination this
+     becomes true and remains true until the user
+     explicitly finishes the journey.
+
+     This allows the "You've Arrived" completion
+     screen to survive app termination.
+     */
+
+    @Published private(set) var hasArrived =
+        false
+
+    @Published private(set) var journeyID: UUID?
+
+    @Published private(set) var wentOffRoute = false
+
+    @Published private(set) var checkInTriggered = false
+
+    @Published private(set) var checkInExpired = false
+
+    @Published private(set) var needsRerouteAfterRestoration = false
 
 
     // MARK: - Computed State
@@ -45,26 +70,26 @@ final class JourneySessionManager:
             return nil
         }
 
+        let coordinate =
+            CLLocationCoordinate2D(
+                latitude:
+                    destinationLatitude,
+
+                longitude:
+                    destinationLongitude
+            )
+
         guard
             CLLocationCoordinate2DIsValid(
-                CLLocationCoordinate2D(
-                    latitude:
-                        destinationLatitude,
-                    longitude:
-                        destinationLongitude
-                )
+                coordinate
             )
         else {
             return nil
         }
 
-        return CLLocationCoordinate2D(
-            latitude:
-                destinationLatitude,
-            longitude:
-                destinationLongitude
-        )
+        return coordinate
     }
+
 
     var hasValidPersistedJourney: Bool {
 
@@ -72,12 +97,13 @@ final class JourneySessionManager:
             return false
         }
 
-        guard !destinationName
-            .trimmingCharacters(
-                in:
-                    .whitespacesAndNewlines
-            )
-            .isEmpty
+        guard
+            !destinationName
+                .trimmingCharacters(
+                    in:
+                        .whitespacesAndNewlines
+                )
+                .isEmpty
         else {
             return false
         }
@@ -131,6 +157,27 @@ final class JourneySessionManager:
 
         static let lastUpdated =
             "journeyLastUpdatedDate"
+
+        static let emergencyEscalation =
+            "journeyEmergencyEscalationActive"
+
+        static let arrived =
+            "journeyHasArrived"
+
+        static let journeyID =
+            "journeyID"
+
+        static let wentOffRoute =
+            "journeyWentOffRoute"
+
+        static let checkInTriggered =
+            "journeyCheckInTriggered"
+
+        static let checkInExpired =
+            "journeyCheckInExpired"
+
+        static let pendingReroute =
+            "journeyNeedsRerouteAfterRestoration"
     }
 
 
@@ -162,12 +209,14 @@ final class JourneySessionManager:
             return
         }
 
+
         let cleanedName =
             destination
                 .trimmingCharacters(
                     in:
                         .whitespacesAndNewlines
                 )
+
 
         guard !cleanedName.isEmpty else {
             return
@@ -207,6 +256,35 @@ final class JourneySessionManager:
         rerouteCount =
             0
 
+        journeyID =
+            UUID()
+
+        wentOffRoute =
+            false
+
+        checkInTriggered =
+            false
+
+        checkInExpired =
+            false
+
+        needsRerouteAfterRestoration =
+            false
+
+
+        /*
+         A new journey must never inherit
+         emergency or arrival state from a
+         previous journey.
+         */
+
+        isEmergencyEscalationActive =
+            false
+
+        hasArrived =
+            false
+
+
         touchSession()
 
         saveJourney()
@@ -224,6 +302,16 @@ final class JourneySessionManager:
             return
         }
 
+        /*
+         A completed journey should no longer
+         receive navigation updates.
+         */
+
+        guard !hasArrived else {
+            return
+        }
+
+
         hasBeenRerouted =
             true
 
@@ -235,9 +323,186 @@ final class JourneySessionManager:
                 newPlannedDistance
             )
 
+
         touchSession()
 
         saveJourney()
+    }
+
+
+    // MARK: - Journey Safety Summary
+
+    func recordOffRoute() {
+
+        guard isJourneyActive, !hasArrived, !wentOffRoute else {
+            return
+        }
+
+        wentOffRoute = true
+        touchSession()
+        saveJourney()
+    }
+
+
+    func recordCheckInTriggered() {
+
+        guard isJourneyActive, !hasArrived, !checkInTriggered else {
+            return
+        }
+
+        checkInTriggered = true
+        touchSession()
+        saveJourney()
+    }
+
+
+    func recordCheckInExpired() {
+
+        guard isJourneyActive, !hasArrived, !checkInExpired else {
+            return
+        }
+
+        checkInExpired = true
+        touchSession()
+        saveJourney()
+    }
+
+
+    func markRerouteNeededAfterRestoration() {
+
+        guard isJourneyActive, !hasArrived else {
+            return
+        }
+
+        needsRerouteAfterRestoration = true
+        touchSession()
+        saveJourney()
+    }
+
+
+    func clearPendingReroute() {
+
+        guard needsRerouteAfterRestoration else {
+            return
+        }
+
+        needsRerouteAfterRestoration = false
+
+        if isJourneyActive {
+            touchSession()
+            saveJourney()
+        } else {
+            defaults.removeObject(forKey: Keys.pendingReroute)
+        }
+    }
+
+
+    // MARK: - Emergency Escalation
+
+    func activateEmergencyEscalation() {
+
+        guard isJourneyActive else {
+            return
+        }
+
+        /*
+         Once the user has arrived, no new
+         emergency escalation should be created.
+         */
+
+        guard !hasArrived else {
+            return
+        }
+
+        guard !isEmergencyEscalationActive else {
+            return
+        }
+
+
+        isEmergencyEscalationActive =
+            true
+
+
+        touchSession()
+
+        saveJourney()
+
+
+    }
+
+
+    func clearEmergencyEscalation() {
+
+        guard isJourneyActive else {
+
+            isEmergencyEscalationActive =
+                false
+
+            defaults.removeObject(
+                forKey:
+                    Keys.emergencyEscalation
+            )
+
+            return
+        }
+
+
+        guard isEmergencyEscalationActive else {
+            return
+        }
+
+
+        isEmergencyEscalationActive =
+            false
+
+
+        touchSession()
+
+        saveJourney()
+
+
+    }
+
+
+    // MARK: - Arrival
+
+    func markJourneyArrived() {
+
+        guard isJourneyActive else {
+            return
+        }
+
+        guard !hasArrived else {
+            return
+        }
+
+
+        /*
+         Persist arrival before any monitoring
+         state is cleaned up.
+         */
+
+        hasArrived =
+            true
+
+        needsRerouteAfterRestoration =
+            false
+
+
+        /*
+         Arrival resolves any outstanding
+         emergency state for this journey.
+         */
+
+        isEmergencyEscalationActive =
+            false
+
+
+        touchSession()
+
+        saveJourney()
+
+
     }
 
 
@@ -249,6 +514,7 @@ final class JourneySessionManager:
             return
         }
 
+
         touchSession()
 
         saveJourney()
@@ -258,6 +524,11 @@ final class JourneySessionManager:
     // MARK: - End Journey
 
     func endJourney() {
+
+        /*
+         This clears both the active journey and
+         its persisted arrival/emergency state.
+         */
 
         resetPublishedState()
 
@@ -337,6 +608,48 @@ final class JourneySessionManager:
             forKey:
                 Keys.lastUpdated
         )
+
+        defaults.set(
+            isEmergencyEscalationActive,
+            forKey:
+                Keys.emergencyEscalation
+        )
+
+        defaults.set(
+            hasArrived,
+            forKey:
+                Keys.arrived
+        )
+
+        defaults.set(
+            journeyID?.uuidString,
+            forKey:
+                Keys.journeyID
+        )
+
+        defaults.set(
+            wentOffRoute,
+            forKey:
+                Keys.wentOffRoute
+        )
+
+        defaults.set(
+            checkInTriggered,
+            forKey:
+                Keys.checkInTriggered
+        )
+
+        defaults.set(
+            checkInExpired,
+            forKey:
+                Keys.checkInExpired
+        )
+
+        defaults.set(
+            needsRerouteAfterRestoration,
+            forKey:
+                Keys.pendingReroute
+        )
     }
 
 
@@ -403,6 +716,34 @@ final class JourneySessionManager:
                 forKey:
                     Keys.lastUpdated
             ) as? Date
+
+        isEmergencyEscalationActive =
+            defaults.bool(
+                forKey:
+                    Keys.emergencyEscalation
+            )
+
+        hasArrived =
+            defaults.bool(
+                forKey:
+                    Keys.arrived
+            )
+
+        journeyID =
+            defaults.string(forKey: Keys.journeyID)
+                .flatMap(UUID.init(uuidString:))
+
+        wentOffRoute =
+            defaults.bool(forKey: Keys.wentOffRoute)
+
+        checkInTriggered =
+            defaults.bool(forKey: Keys.checkInTriggered)
+
+        checkInExpired =
+            defaults.bool(forKey: Keys.checkInExpired)
+
+        needsRerouteAfterRestoration =
+            defaults.bool(forKey: Keys.pendingReroute)
     }
 
 
@@ -411,11 +752,6 @@ final class JourneySessionManager:
     private func validateLoadedJourney() {
 
         guard isJourneyActive else {
-
-            /*
-             If storage says the journey is not
-             active, normalize any leftover data.
-             */
 
             if hasStoredJourneyData {
 
@@ -442,11 +778,21 @@ final class JourneySessionManager:
             return
         }
 
+        guard
+            defaults.object(forKey: Keys.latitude) != nil,
+            defaults.object(forKey: Keys.longitude) != nil
+        else {
+
+            invalidatePersistedJourney()
+            return
+        }
+
 
         let coordinate =
             CLLocationCoordinate2D(
                 latitude:
                     destinationLatitude,
+
                 longitude:
                     destinationLongitude
             )
@@ -476,13 +822,15 @@ final class JourneySessionManager:
 
 
         /*
-         A journey start time in the future
-         indicates corrupted persistence data.
+         A start date significantly in the
+         future indicates corrupted persistence.
          */
 
         if startDate >
             Date()
-                .addingTimeInterval(60) {
+                .addingTimeInterval(
+                    60
+                ) {
 
             invalidatePersistedJourney()
 
@@ -517,9 +865,39 @@ final class JourneySessionManager:
 
 
         /*
-         Existing users may have persisted
-         sessions from before lastUpdatedDate
-         existed.
+         Arrival and emergency escalation cannot
+         logically coexist.
+
+         If an older/corrupted persisted state
+         contains both, arrival takes priority.
+         */
+
+        if
+            hasArrived &&
+            isEmergencyEscalationActive {
+
+            isEmergencyEscalationActive =
+                false
+
+            saveJourney()
+        }
+
+        if hasArrived && needsRerouteAfterRestoration {
+
+            needsRerouteAfterRestoration = false
+            saveJourney()
+        }
+
+        if journeyID == nil {
+
+            journeyID = UUID()
+            saveJourney()
+        }
+
+
+        /*
+         Migration for sessions saved before
+         lastUpdatedDate existed.
          */
 
         if lastUpdatedDate == nil {
@@ -555,6 +933,26 @@ final class JourneySessionManager:
         defaults.object(
             forKey:
                 Keys.longitude
+        ) != nil ||
+
+        defaults.object(
+            forKey:
+                Keys.emergencyEscalation
+        ) != nil ||
+
+        defaults.object(
+            forKey:
+                Keys.arrived
+        ) != nil ||
+
+        defaults.object(
+            forKey:
+                Keys.journeyID
+        ) != nil ||
+
+        defaults.object(
+            forKey:
+                Keys.pendingReroute
         ) != nil
     }
 
@@ -602,6 +1000,27 @@ final class JourneySessionManager:
 
         lastUpdatedDate =
             nil
+
+        isEmergencyEscalationActive =
+            false
+
+        hasArrived =
+            false
+
+        journeyID =
+            nil
+
+        wentOffRoute =
+            false
+
+        checkInTriggered =
+            false
+
+        checkInExpired =
+            false
+
+        needsRerouteAfterRestoration =
+            false
     }
 
 
@@ -658,5 +1077,21 @@ final class JourneySessionManager:
             forKey:
                 Keys.lastUpdated
         )
+
+        defaults.removeObject(
+            forKey:
+                Keys.emergencyEscalation
+        )
+
+        defaults.removeObject(
+            forKey:
+                Keys.arrived
+        )
+
+        defaults.removeObject(forKey: Keys.journeyID)
+        defaults.removeObject(forKey: Keys.wentOffRoute)
+        defaults.removeObject(forKey: Keys.checkInTriggered)
+        defaults.removeObject(forKey: Keys.checkInExpired)
+        defaults.removeObject(forKey: Keys.pendingReroute)
     }
 }

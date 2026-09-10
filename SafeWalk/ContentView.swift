@@ -45,7 +45,11 @@ struct ContentView: View {
 
                                 VStack(alignment: .leading, spacing: 4) {
 
-                                    Text("Active SafeWalk")
+                                    Text(
+                                        sessionManager.hasArrived
+                                            ? "SafeWalk Complete"
+                                            : "Active SafeWalk"
+                                    )
                                         .font(.headline)
 
                                     Text(
@@ -68,7 +72,9 @@ struct ContentView: View {
                             } label: {
 
                                 Label(
-                                    "Resume SafeWalk",
+                                    sessionManager.hasArrived
+                                        ? "Review Completed Journey"
+                                        : "Resume SafeWalk",
                                     systemImage:
                                         "arrow.right.circle.fill"
                                 )
@@ -77,6 +83,11 @@ struct ContentView: View {
                                 )
                             }
                             .buttonStyle(.borderedProminent)
+                            .accessibilityHint(
+                                sessionManager.hasArrived
+                                    ? "Opens the arrival summary so you can finish the journey"
+                                    : "Restores the active journey"
+                            )
                         }
                         .padding()
                         .background(

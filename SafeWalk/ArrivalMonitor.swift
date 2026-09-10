@@ -2,42 +2,110 @@ import Foundation
 import CoreLocation
 import Combine
 
-class ArrivalMonitor: ObservableObject {
+final class ArrivalMonitor: ObservableObject {
 
-    @Published var hasArrived = false
-    @Published var distanceToDestination: Double = 0
+    // MARK: - Published State
 
-    let arrivalThreshold: Double = 400
+    @Published private(set) var hasArrived = false
+
+    @Published private(set) var distanceToDestination:
+        CLLocationDistance = 0
+
+
+    // MARK: - Configuration
+
+    /*
+     50 metres is a more appropriate default
+     arrival radius for a walking journey.
+
+     GPS accuracy is also considered below so
+     SafeWalk does not require impossible
+     precision.
+     */
+
+    private let arrivalThreshold:
+        CLLocationDistance = 50
+
+
+    // MARK: - State
+
+    /*
+     Once arrival has been detected, subsequent
+     GPS updates must not repeatedly trigger
+     arrival.
+     */
+
+    private var arrivalConfirmed = false
+
+
+    // MARK: - Check Arrival
 
     func checkArrival(
-        userLocation: CLLocationCoordinate2D,
+        userLocation: CLLocation,
         destination: CLLocationCoordinate2D
     ) {
 
-        let user = CLLocation(
-            latitude: userLocation.latitude,
-            longitude: userLocation.longitude
-        )
-
-        let target = CLLocation(
-            latitude: destination.latitude,
-            longitude: destination.longitude
-        )
-
-        let distance = user.distance(from: target)
-
-        DispatchQueue.main.async {
-
-            self.distanceToDestination = distance
-
-            if distance <= self.arrivalThreshold {
-                self.hasArrived = true
-            }
+        guard !arrivalConfirmed else {
+            return
         }
+
+
+        guard
+            CLLocationCoordinate2DIsValid(
+                userLocation.coordinate
+            ),
+            CLLocationCoordinate2DIsValid(
+                destination
+            )
+        else {
+            return
+        }
+
+
+        let target =
+            CLLocation(
+                latitude:
+                    destination.latitude,
+
+                longitude:
+                    destination.longitude
+            )
+
+
+        let distance =
+            userLocation.distance(
+                from:
+                    target
+            )
+
+        distanceToDestination = distance
+
+        guard
+            userLocation.horizontalAccuracy >= 0,
+            userLocation.horizontalAccuracy <= arrivalThreshold,
+            distance <= arrivalThreshold
+        else {
+            return
+        }
+
+        arrivalConfirmed = true
+        hasArrived = true
     }
 
+
+    // MARK: - Reset
+
     func reset() {
-        hasArrived = false
-        distanceToDestination = 0
+
+        arrivalConfirmed =
+            false
+
+
+        hasArrived =
+            false
+
+
+        distanceToDestination =
+            0
     }
 }

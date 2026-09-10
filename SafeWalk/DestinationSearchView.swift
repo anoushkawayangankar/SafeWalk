@@ -69,6 +69,12 @@ struct DestinationSearchView: View {
                     .buttonStyle(
                         .plain
                     )
+                    .accessibilityLabel(
+                        "Clear destination search"
+                    )
+                    .accessibilityHint(
+                        "Clears the current search text and results"
+                    )
                 }
             }
             .padding(12)
@@ -118,6 +124,9 @@ struct DestinationSearchView: View {
             }
             .buttonStyle(
                 .borderedProminent
+            )
+            .accessibilityHint(
+                "Searches MapKit for the entered destination"
             )
             .disabled(
                 destinationSearch
@@ -427,6 +436,35 @@ struct DestinationSearchView: View {
                         .secondary
                     )
             }
+
+
+            NavigationLink {
+
+                JourneyView(
+                    destination:
+                        item.name ?? "Destination",
+
+                    selectedDestination:
+                        item
+                )
+
+            } label: {
+
+                Label(
+                    "Plan SafeWalk",
+                    systemImage:
+                        "figure.walk"
+                )
+                .frame(
+                    maxWidth: .infinity
+                )
+            }
+            .buttonStyle(
+                .borderedProminent
+            )
+            .accessibilityHint(
+                "Opens walking route planning for this destination"
+            )
 
 
             Button(

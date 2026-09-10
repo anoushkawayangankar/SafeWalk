@@ -87,9 +87,6 @@ final class PeriodicCheckInManager: ObservableObject {
         scheduleNextCheckIn()
 
 
-        print(
-            "⏰ Periodic checks started"
-        )
     }
 
 
@@ -262,11 +259,6 @@ final class PeriodicCheckInManager: ObservableObject {
         persistState()
 
 
-        print(
-            "⏰ PERIODIC CHECK-IN REQUIRED"
-        )
-
-
         onCheckInRequired?()
     }
 
@@ -279,6 +271,22 @@ final class PeriodicCheckInManager: ObservableObject {
             return
         }
 
+
+        scheduleNextCheckIn()
+    }
+
+
+    func recoverInterruptedTriggerIfNeeded(
+        hasUnresolvedCheckIn: Bool
+    ) {
+
+        guard
+            isRunning,
+            nextCheckInDate == nil,
+            !hasUnresolvedCheckIn
+        else {
+            return
+        }
 
         scheduleNextCheckIn()
     }

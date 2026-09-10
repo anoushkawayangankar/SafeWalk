@@ -30,6 +30,10 @@ final class CheckInManager: ObservableObject {
     private var expirationDate:
         Date?
 
+    var checkInDeadline: Date? {
+        expirationDate
+    }
+
 
     // MARK: - Persistence
 
@@ -100,13 +104,6 @@ final class CheckInManager: ObservableObject {
 
 
         persistState()
-
-
-        print(
-            reason == .offRoute
-                ? "⏱ Starting OFF-ROUTE check-in"
-                : "⏱ Starting PERIODIC check-in"
-        )
 
 
         startTimer()
@@ -221,10 +218,6 @@ final class CheckInManager: ObservableObject {
             )
 
 
-        print(
-            "⏱ Check-in:",
-            secondsRemaining
-        )
     }
 
 
@@ -260,9 +253,6 @@ final class CheckInManager: ObservableObject {
         persistState()
 
 
-        print(
-            "⚠️ CHECK-IN EXPIRED"
-        )
     }
 
 
@@ -293,9 +283,6 @@ final class CheckInManager: ObservableObject {
         clearPersistedState()
 
 
-        print(
-            "✅ User confirmed safe"
-        )
     }
 
 
@@ -514,11 +501,6 @@ final class CheckInManager: ObservableObject {
 
             persistState()
 
-
-            print(
-                "⚠️ Persisted check-in expired while app was closed"
-            )
-
             return
         }
 
@@ -546,14 +528,6 @@ final class CheckInManager: ObservableObject {
                     )
                 )
             )
-
-
-        print(
-            "♻️ Restored check-in with",
-            secondsRemaining,
-            "seconds remaining"
-        )
-
 
         startTimer()
     }

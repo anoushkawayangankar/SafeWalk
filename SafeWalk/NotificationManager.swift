@@ -62,23 +62,11 @@ final class NotificationManager: ObservableObject {
                     .sound,
                     .badge
                 ]
-            ) { [weak self] granted, error in
+            ) { [weak self] _, error in
 
-                if let error {
-
-                    print(
-                        "Notification permission error:",
-                        error.localizedDescription
-                    )
-
+                if error != nil {
                     return
                 }
-
-
-                print(
-                    "Notifications granted:",
-                    granted
-                )
 
 
                 self?
@@ -132,10 +120,6 @@ final class NotificationManager: ObservableObject {
                     }
 
 
-                    print(
-                        "Notification status:",
-                        settings.authorizationStatus.rawValue
-                    )
                 }
             }
     }
@@ -218,7 +202,9 @@ final class NotificationManager: ObservableObject {
 
     // MARK: - Off-Route Notification
 
-    func sendOffRouteNotification() {
+    func sendOffRouteNotification(
+        journeyID: UUID?
+    ) {
 
         let content =
             UNMutableNotificationContent()
@@ -242,6 +228,8 @@ final class NotificationManager: ObservableObject {
         content.categoryIdentifier =
             Self.checkInCategory
 
+        addJourneyID(journeyID, to: content)
+
 
         send(
             identifier:
@@ -255,7 +243,9 @@ final class NotificationManager: ObservableObject {
 
     // MARK: - Periodic Safety Notification
 
-    func sendPeriodicCheckInNotification() {
+    func sendPeriodicCheckInNotification(
+        journeyID: UUID?
+    ) {
 
         let content =
             UNMutableNotificationContent()
@@ -279,6 +269,8 @@ final class NotificationManager: ObservableObject {
         content.categoryIdentifier =
             Self.checkInCategory
 
+        addJourneyID(journeyID, to: content)
+
 
         send(
             identifier:
@@ -292,7 +284,10 @@ final class NotificationManager: ObservableObject {
 
     // MARK: - Missed Check-In Notification
 
-    func sendMissedCheckInNotification() {
+    func sendMissedCheckInNotification(
+        journeyID: UUID?,
+        at deadline: Date? = nil
+    ) {
 
         let content =
             UNMutableNotificationContent()
@@ -312,14 +307,55 @@ final class NotificationManager: ObservableObject {
         content.sound =
             .default
 
+        content.categoryIdentifier =
+            Self.checkInCategory
+
+        addJourneyID(journeyID, to: content)
+
+        let trigger: UNNotificationTrigger?
+
+        if let deadline {
+            trigger = UNTimeIntervalNotificationTrigger(
+                timeInterval: max(1, deadline.timeIntervalSinceNow),
+                repeats: false
+            )
+        } else {
+            trigger = nil
+        }
+
 
         send(
             identifier:
                 "safewalk-missed",
 
             content:
-                content
+                content,
+
+            trigger:
+                trigger
         )
+    }
+
+
+    func cancelPendingMissedCheckInNotification() {
+
+        UNUserNotificationCenter.current()
+            .removePendingNotificationRequests(
+                withIdentifiers: ["safewalk-missed"]
+            )
+    }
+
+
+    private func addJourneyID(
+        _ journeyID: UUID?,
+        to content: UNMutableNotificationContent
+    ) {
+
+        guard let journeyID else {
+            return
+        }
+
+        content.userInfo["safeWalkJourneyID"] = journeyID.uuidString
     }
 
 
@@ -328,7 +364,8 @@ final class NotificationManager: ObservableObject {
     private func send(
         identifier: String,
         content:
-            UNNotificationContent
+            UNNotificationContent,
+        trigger: UNNotificationTrigger? = nil
     ) {
 
         /*
@@ -339,10 +376,6 @@ final class NotificationManager: ObservableObject {
 
         guard authorizationStatus != .denied
         else {
-
-            print(
-                "Notification skipped because permission is denied."
-            )
 
             return
         }
@@ -357,29 +390,12 @@ final class NotificationManager: ObservableObject {
                     content,
 
                 trigger:
-                    nil
+                    trigger
             )
 
 
         UNUserNotificationCenter
             .current()
-            .add(request) { error in
-
-                if let error {
-
-                    print(
-                        "Notification error:",
-                        error.localizedDescription
-                    )
-
-                    return
-                }
-
-
-                print(
-                    "Notification sent:",
-                    identifier
-                )
-            }
+            .add(request)
     }
 }

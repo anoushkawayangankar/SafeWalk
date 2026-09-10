@@ -38,6 +38,8 @@ final class LocationManager:
 
     @Published var areLocationServicesEnabled = true
 
+    private var shouldUpdateLocation = false
+
 
     // MARK: - Permission Helpers
 
@@ -80,6 +82,9 @@ final class LocationManager:
         authorizationStatus =
             manager.authorizationStatus
 
+        areLocationServicesEnabled =
+            CLLocationManager.locationServicesEnabled()
+
         updateAccuracyState()
     }
 
@@ -87,6 +92,17 @@ final class LocationManager:
     // MARK: - Request Initial Permission
 
     func requestLocationPermission() {
+
+        shouldUpdateLocation = true
+
+        areLocationServicesEnabled =
+            CLLocationManager.locationServicesEnabled()
+
+        guard areLocationServicesEnabled else {
+            locationError =
+                "Location Services are disabled. Enable them in Settings to use SafeWalk."
+            return
+        }
 
         let status =
             manager.authorizationStatus
@@ -194,6 +210,8 @@ final class LocationManager:
 
     func startUpdatingLocation() {
 
+        shouldUpdateLocation = true
+
         let status =
             manager.authorizationStatus
 
@@ -219,6 +237,8 @@ final class LocationManager:
     // MARK: - Start Background Tracking
 
     func startBackgroundTracking() {
+
+        shouldUpdateLocation = true
 
         let status =
             manager.authorizationStatus
@@ -273,6 +293,8 @@ final class LocationManager:
     // MARK: - Stop Tracking
 
     func stopUpdatingLocation() {
+
+        shouldUpdateLocation = false
 
         manager.stopUpdatingLocation()
 
@@ -408,6 +430,9 @@ final class LocationManager:
             self.authorizationStatus =
                 status
 
+            self.areLocationServicesEnabled =
+                CLLocationManager.locationServicesEnabled()
+
             self.updateAccuracyState()
 
 
@@ -418,7 +443,9 @@ final class LocationManager:
                 self.locationError =
                     nil
 
-                self.startUpdatingLocation()
+                if self.shouldUpdateLocation {
+                    self.startUpdatingLocation()
+                }
 
 
             case .authorizedWhenInUse:
@@ -426,7 +453,9 @@ final class LocationManager:
                 self.locationError =
                     nil
 
-                self.startUpdatingLocation()
+                if self.shouldUpdateLocation {
+                    self.startUpdatingLocation()
+                }
 
 
             case .denied:

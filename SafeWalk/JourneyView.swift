@@ -1,4 +1,3 @@
-
 import SwiftUI
 import CoreLocation
 import MapKit
@@ -28,18 +27,11 @@ struct JourneyView: View {
         NotificationManager.shared
 
 
-    // MARK: - Journey History State
+    // MARK: - Journey State
 
     @State private var journeyStartDate: Date?
 
-    @State private var journeyWentOffRoute =
-        false
-
-    @State private var journeyCheckInTriggered =
-        false
-
-    @State private var journeyCheckInExpired =
-        false
+    @State private var isShowingArrivalCompletion = false
 
 
     // MARK: - Environment
@@ -57,33 +49,27 @@ struct JourneyView: View {
         destination: String,
         selectedDestination: MKMapItem? = nil
     ) {
-
-        self.destination =
-            destination
-
-        self.selectedDestination =
-            selectedDestination
+        self.destination = destination
+        self.selectedDestination = selectedDestination
     }
 
 
-    // MARK: - Current Destination Name
+    // MARK: - Destination Name
 
     private var currentDestination: String {
 
-        if sessionManager.isJourneyActive &&
+        if
+            sessionManager.isJourneyActive,
             !sessionManager.destinationName.isEmpty {
 
             return sessionManager.destinationName
         }
 
-
-        if let name =
-            selectedDestination?.name,
+        if let name = selectedDestination?.name,
            !name.isEmpty {
 
             return name
         }
-
 
         if let name =
             destinationSearch
@@ -94,7 +80,6 @@ struct JourneyView: View {
             return name
         }
 
-
         return destination
     }
 
@@ -104,18 +89,10 @@ struct JourneyView: View {
     private var currentDestinationCoordinate:
         CLLocationCoordinate2D? {
 
-        /*
-         When restoring a persisted journey,
-         JourneySessionManager is the source
-         of truth for the destination.
-         */
-
         if sessionManager.isJourneyActive {
 
-            return sessionManager
-                .destinationCoordinate
+            return sessionManager.destinationCoordinate
         }
-
 
         if let selectedDestination {
 
@@ -124,35 +101,73 @@ struct JourneyView: View {
                 .coordinate
         }
 
-
         if let selected =
-            destinationSearch
-                .selectedDestination {
+            destinationSearch.selectedDestination {
 
             return selected
                 .location
                 .coordinate
         }
 
-
         return nil
     }
 
 
-    // MARK: - Display Route
+    // MARK: - Displayed Route
 
-    private var displayedRoute:
-        MKRoute? {
+    private var displayedRoute: MKRoute? {
 
-        if sessionManager
-            .isJourneyActive {
+        if sessionManager.isJourneyActive {
 
-            return trackingService.route ??
-                routeManager.route
+            return trackingService.route
+                ?? routeManager.route
         }
 
-
         return routeManager.route
+    }
+
+
+    // MARK: - Journey Duration
+
+    private var journeyDurationMinutes: Int {
+
+        guard let startDate =
+            sessionManager.journeyStartDate
+            ?? journeyStartDate
+        else {
+            return 0
+        }
+
+        let duration =
+            Date().timeIntervalSince(
+                startDate
+            )
+
+        return max(
+            0,
+            Int(duration / 60)
+        )
+    }
+
+
+    // MARK: - Completion Distance
+
+    private var completionDistance: Double {
+
+        if sessionManager.originalPlannedDistance > 0 {
+
+            return sessionManager
+                .originalPlannedDistance
+        }
+
+        return displayedRoute?
+            .distance
+            ?? 0
+    }
+
+
+    private var isArrivalCompletionVisible: Bool {
+        sessionManager.hasArrived || isShowingArrivalCompletion
     }
 
 
@@ -162,88 +177,64 @@ struct JourneyView: View {
 
         ScrollView {
 
-            VStack(spacing: 16) {
+            VStack(
+                spacing: 20
+            ) {
 
-                // MARK: Header
+                headerContent
 
-                Text("Journey")
-                    .font(.largeTitle)
-                    .bold()
+                if sessionManager.hasArrived {
 
+                    arrivalContent
 
-                Text(
-                    "You are going to:"
-                )
-
-
-                Text(
-                    currentDestination
-                )
-                .font(.title2)
-                .bold()
-                .multilineTextAlignment(
-                    .center
-                )
-
-
-                Divider()
-
-
-                // MARK: Permissions
+                } else {
 
                 locationPermissionContent()
 
                 notificationPermissionContent()
 
 
-                // MARK: Search
+                // MARK: Destination Search
 
-                if destinationSearch
-                    .isSearching {
+                if destinationSearch.isSearching {
 
                     ProgressView(
-                        "Searching destination..."
+                        "Finding destination..."
                     )
                 }
 
 
                 if let error =
-                    destinationSearch
-                        .errorMessage {
+                    destinationSearch.errorMessage {
 
                     searchFailureContent(
-                        error:
-                            error
+                        message: error
                     )
                 }
 
 
-                // MARK: Location Ready
+                // MARK: Main Journey Content
 
-                if let latitude =
-                    trackingService
-                        .locationManager
-                        .latitude,
+                if
+                    let latitude =
+                        trackingService
+                            .locationManager
+                            .latitude,
 
-                   let longitude =
-                    trackingService
-                        .locationManager
-                        .longitude,
+                    let longitude =
+                        trackingService
+                            .locationManager
+                            .longitude,
 
-                   let destinationCoordinate =
-                    currentDestinationCoordinate {
+                    let destinationCoordinate =
+                        currentDestinationCoordinate {
 
                     let userCoordinate =
                         CLLocationCoordinate2D(
-                            latitude:
-                                latitude,
-
-                            longitude:
-                                longitude
+                            latitude: latitude,
+                            longitude: longitude
                         )
 
-
-                    // MARK: Map
 
                     MapView(
                         userCoordinate:
@@ -255,7 +246,9 @@ struct JourneyView: View {
                         route:
                             displayedRoute
                     )
-                    .frame(height: 350)
+                    .frame(
+                        height: 330
+                    )
                     .clipShape(
                         RoundedRectangle(
                             cornerRadius: 20
@@ -263,106 +256,48 @@ struct JourneyView: View {
                     )
 
 
-                    // MARK: Destination Name
+                    VStack(
+                        spacing: 4
+                    ) {
 
-                    VStack(spacing: 4) {
-
-                        Text("Destination")
-                            .font(.caption)
-                            .foregroundStyle(
-                                .secondary
-                            )
+                        Text(
+                            "Destination"
+                        )
+                        .font(
+                            .caption
+                        )
+                        .foregroundStyle(
+                            .secondary
+                        )
 
 
                         Text(
                             currentDestination
                         )
-                        .font(.headline)
+                        .font(
+                            .headline
+                        )
                         .multilineTextAlignment(
                             .center
                         )
                     }
 
 
-                    // MARK: Route State
-
-                    if let route =
-                        displayedRoute {
-
-                        routeInformation(
-                            route:
-                                route
-                        )
+                    routeInformation
 
 
-                        Divider()
+                    if sessionManager.isJourneyActive {
 
-
-                        if sessionManager
-                            .isJourneyActive {
-
-                            activeJourneyContent()
-
-                        } else {
-
-                            startJourneyButton(
-                                route:
-                                    route,
-
-                                destinationCoordinate:
-                                    destinationCoordinate
-                            )
-                        }
-
-
-                    } else if routeManager
-                        .isLoading {
-
-                        routeLoadingContent()
-
-
-                    } else if routeManager
-                        .errorMessage != nil {
-
-                        routeFailureContent(
-                            currentUserCoordinate:
-                                userCoordinate,
-
-                            destinationCoordinate:
-                                destinationCoordinate
-                        )
-
+                        activeJourneyContent
 
                     } else {
 
-                        Button(
-                            sessionManager.isJourneyActive
-                                ? "Restore Journey Route"
-                                : "Calculate Walking Route"
-                        ) {
-
-                            calculateRoute(
-                                from:
-                                    userCoordinate,
-
-                                to:
-                                    destinationCoordinate
-                            )
-                        }
-                        .buttonStyle(
-                            .borderedProminent
-                        )
-                        .disabled(
-                            !trackingService
-                                .locationManager
-                                .hasLocationPermission
-                        )
+                        inactiveJourneyContent
                     }
-
 
                 } else {
 
-                    waitingContent()
+                    waitingContent
                 }
 
 
@@ -371,26 +306,33 @@ struct JourneyView: View {
                 if let error =
                     trackingService
                         .locationManager
-                        .locationError,
+                        .locationError {
 
-                   !trackingService
-                        .locationManager
-                        .locationPermissionDenied {
-
-                    Text(error)
-                        .foregroundStyle(.red)
-                        .font(.caption)
-                        .multilineTextAlignment(
-                            .center
-                        )
-                        .padding(.horizontal)
+                    Text(
+                        error
+                    )
+                    .font(
+                        .footnote
+                    )
+                    .foregroundStyle(
+                        .red
+                    )
+                    .multilineTextAlignment(
+                        .center
+                    )
+                }
                 }
             }
             .padding()
         }
+        .navigationTitle(
+            "SafeWalk"
+        )
+        .navigationBarTitleDisplayMode(
+            .inline
+        )
 
-
-        // MARK: Appeared
+        // MARK: On Appear
 
         .onAppear {
 
@@ -400,7 +342,6 @@ struct JourneyView: View {
                 .refreshPermissionStatus()
         }
 
-
         // MARK: Search Results
 
         .onReceive(
@@ -409,17 +350,19 @@ struct JourneyView: View {
         ) { results in
 
             guard
-                selectedDestination == nil,
-
-                destinationSearch
-                    .selectedDestination == nil,
-
-                let first =
-                    results.first
+                !sessionManager.isJourneyActive
             else {
                 return
             }
 
+            guard
+                selectedDestination == nil,
+                destinationSearch
+                    .selectedDestination == nil,
+                let first = results.first
+            else {
+                return
+            }
 
             destinationSearch
                 .selectDestination(
@@ -427,194 +370,170 @@ struct JourneyView: View {
                 )
         }
 
-
         // MARK: Selected Destination
 
         .onReceive(
             destinationSearch
                 .$selectedDestination
-                .compactMap { $0 }
-        ) { item in
+        ) { selected in
 
             guard
-                !sessionManager
-                    .isJourneyActive,
-
-                routeManager.route ==
-                    nil,
-
-                let location =
-                    trackingService
-                        .locationManager
-                        .location
+                !sessionManager.isJourneyActive
             else {
                 return
             }
 
+            guard selected != nil else {
+                return
+            }
 
-            calculateRoute(
-                from:
-                    location.coordinate,
+            guard routeManager.route == nil else {
+                return
+            }
 
-                to:
-                    item
-                        .location
-                        .coordinate
-            )
+            guard
+                trackingService
+                    .locationManager
+                    .location != nil
+            else {
+                return
+            }
+
+            calculateRoute()
         }
 
-
-        // MARK: GPS Changes
+        // MARK: GPS Updates
 
         .onReceive(
             trackingService
                 .locationManager
                 .$location
-                .compactMap { $0 }
         ) { location in
+
+            guard let location else {
+                return
+            }
 
             handleLocation(
                 location
             )
         }
 
-
-        // MARK: Restore Tracking
+        // MARK: Route Restoration
 
         .onReceive(
             routeManager
                 .$route
-                .compactMap { $0 }
         ) { route in
 
             guard
-                sessionManager
-                    .hasValidPersistedJourney,
-
-                !trackingService
-                    .isTracking,
-
-                let destination =
-                    sessionManager
-                        .destinationCoordinate
+                sessionManager.isJourneyActive,
+                !sessionManager.hasArrived
             else {
                 return
             }
 
+            guard
+                !trackingService.isTracking
+            else {
+                return
+            }
+
+            guard
+                let route,
+                let destination =
+                    currentDestinationCoordinate
+            else {
+                return
+            }
+
+            guard
+                routeManager.errorMessage == nil
+            else {
+                return
+            }
 
             trackingService
                 .restoreTracking(
-                    route:
-                        route,
-
-                    destination:
-                        destination
+                    route: route,
+                    destination: destination
                 )
         }
 
+        // MARK: Successful Reroute
 
-        // MARK: Rerouting
+        .onReceive(
+            trackingService
+                .$rerouteVersion
+                .removeDuplicates()
+        ) { version in
 
-        .onChange(
-            of:
-                trackingService
-                    .rerouteVersion
-        ) {
-
-            guard
-                trackingService
-                    .rerouteVersion > 0,
-
-                let route =
-                    trackingService.route
-            else {
+            guard version > 0 else {
                 return
             }
 
+            guard
+                let distance =
+                    trackingService
+                        .route?
+                        .distance
+            else {
+                return
+            }
 
             sessionManager
                 .recordReroute(
                     newPlannedDistance:
-                        route.distance
+                        distance
                 )
         }
 
+        // MARK: Arrival
 
-        // MARK: Off Route History
-
-        .onChange(
-            of:
-                trackingService
-                    .journeyMonitor
-                    .isOffRoute
-        ) {
-
-            if trackingService
+        .onReceive(
+            trackingService
                 .journeyMonitor
-                .isOffRoute {
+                .$hasArrived
+                .removeDuplicates()
+        ) { arrived in
 
-                journeyWentOffRoute =
-                    true
+            guard arrived else {
+                return
             }
+
+            guard sessionManager.isJourneyActive else {
+                return
+            }
+
+            /*
+             Do NOT end the journey immediately.
+
+             Keep the session alive while the
+             completion screen is displayed.
+             */
+
+            isShowingArrivalCompletion =
+                true
         }
 
+        // MARK: Location Authorization
 
-        // MARK: Check-In History
-
-        .onChange(
-            of:
-                trackingService
-                    .checkInManager
-                    .isCheckInActive
-        ) {
-
-            if trackingService
-                .checkInManager
-                .isCheckInActive {
-
-                journeyCheckInTriggered =
-                    true
-            }
-        }
-
-
-        // MARK: Escalation History
-
-        .onChange(
-            of:
-                trackingService
-                    .isEmergencyEscalationActive
-        ) {
-
-            if trackingService
-                .isEmergencyEscalationActive {
-
-                journeyCheckInExpired =
-                    true
-            }
-        }
-
-
-        // MARK: Background Permission
-
-        .onChange(
-            of:
-                trackingService
-                    .locationManager
-                    .authorizationStatus
-        ) {
+        .onReceive(
+            trackingService
+                .locationManager
+                .$authorizationStatus
+                .removeDuplicates()
+        ) { status in
 
             guard
-                sessionManager
-                    .isJourneyActive
+                sessionManager.isJourneyActive,
+                !sessionManager.hasArrived,
+                trackingService.isTracking
             else {
                 return
             }
 
-
-            if trackingService
-                .locationManager
-                .authorizationStatus ==
+            if status ==
                 .authorizedAlways {
 
                 trackingService
@@ -625,76 +544,192 @@ struct JourneyView: View {
     }
 
 
+    // MARK: - Header
+
+    private var headerContent:
+        some View {
+
+        VStack(
+            spacing: 6
+        ) {
+
+            Image(
+                systemName:
+                    isArrivalCompletionVisible
+                    ? "checkmark.circle.fill"
+                    : "figure.walk.circle.fill"
+            )
+            .font(
+                .system(
+                    size: 52
+                )
+            )
+            .foregroundStyle(
+                isArrivalCompletionVisible
+                ? .green
+                : .blue
+            )
+
+
+            Text(
+                isArrivalCompletionVisible
+                ? "Journey Complete"
+                : (
+                    sessionManager.isJourneyActive
+                    ? "SafeWalk Active"
+                    : "Plan Your SafeWalk"
+                )
+            )
+            .font(
+                .title2
+            )
+            .fontWeight(
+                .bold
+            )
+
+
+            Text(
+                currentDestination
+            )
+            .font(
+                .headline
+            )
+            .foregroundStyle(
+                .secondary
+            )
+            .multilineTextAlignment(
+                .center
+            )
+        }
+    }
+
+
+    // MARK: - Inactive Journey
+
+    @ViewBuilder
+    private var inactiveJourneyContent:
+        some View {
+
+        if routeManager.isLoading {
+
+            routeLoadingContent
+
+        } else if let error =
+            routeManager.errorMessage {
+
+            routeFailureContent(
+                message: error
+            )
+
+        } else if displayedRoute != nil {
+
+            startJourneyButton
+
+        } else {
+
+            Button {
+
+                calculateRoute()
+
+            } label: {
+
+                Label(
+                    "Calculate Walking Route",
+                    systemImage:
+                        "arrow.triangle.branch"
+                )
+                .frame(
+                    maxWidth:
+                        .infinity
+                )
+            }
+            .buttonStyle(
+                .borderedProminent
+            )
+        }
+    }
+
+
     // MARK: - Search Failure
 
     @ViewBuilder
     private func searchFailureContent(
-        error: String
+        message: String
     ) -> some View {
 
-        VStack(spacing: 10) {
+        VStack(
+            spacing: 10
+        ) {
 
-            Text(error)
-                .font(.caption)
-                .foregroundStyle(
-                    .secondary
-                )
-                .multilineTextAlignment(
-                    .center
-                )
+            Image(
+                systemName:
+                    "magnifyingglass.circle"
+            )
+            .font(
+                .title2
+            )
 
 
-            if destinationSearch
-                .canRetry {
+            Text(
+                message
+            )
+            .font(
+                .footnote
+            )
+            .multilineTextAlignment(
+                .center
+            )
 
-                Button {
+
+            if destinationSearch.canRetry {
+
+                Button(
+                    "Retry Search"
+                ) {
 
                     destinationSearch
                         .retryLastSearch()
-
-                } label: {
-
-                    Label(
-                        "Retry Search",
-                        systemImage:
-                            "arrow.clockwise"
-                    )
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(
+                    .bordered
+                )
             }
         }
         .padding()
+        .frame(
+            maxWidth: .infinity
+        )
+        .background(
+            .thinMaterial
+        )
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: 16
+            )
+        )
     }
 
 
     // MARK: - Route Loading
 
-    @ViewBuilder
-    private func routeLoadingContent()
-        -> some View {
+    private var routeLoadingContent:
+        some View {
 
-        VStack(spacing: 12) {
+        VStack(
+            spacing: 10
+        ) {
 
             ProgressView()
 
 
             Text(
-                sessionManager.isJourneyActive
-                    ? "Restoring Journey Route"
-                    : "Calculating Walking Route"
+                "Calculating your walking route..."
             )
-            .font(.headline)
-
-
-            Text(
-                sessionManager.isJourneyActive
-                    ? "SafeWalk is rebuilding the route to your saved destination so journey monitoring can resume."
-                    : "SafeWalk is finding a walking route to your destination."
+            .font(
+                .footnote
             )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(
-                .center
+            .foregroundStyle(
+                .secondary
             )
         }
         .padding()
@@ -705,66 +740,48 @@ struct JourneyView: View {
 
     @ViewBuilder
     private func routeFailureContent(
-        currentUserCoordinate:
-            CLLocationCoordinate2D,
-
-        destinationCoordinate:
-            CLLocationCoordinate2D
+        message: String
     ) -> some View {
 
-        VStack(spacing: 12) {
+        VStack(
+            spacing: 12
+        ) {
 
             Image(
                 systemName:
-                    sessionManager.isJourneyActive
-                        ? "arrow.clockwise.circle.fill"
-                        : "exclamationmark.triangle.fill"
+                    "wifi.exclamationmark"
             )
-            .font(.system(size: 38))
-            .foregroundStyle(.orange)
+            .font(
+                .title2
+            )
+            .foregroundStyle(
+                .orange
+            )
 
 
             Text(
-                sessionManager.isJourneyActive
-                    ? "Unable to Restore Journey Route"
-                    : "Unable to Calculate Route"
+                "Route unavailable"
             )
-            .font(.headline)
+            .font(
+                .headline
+            )
 
 
-            if sessionManager
-                .isJourneyActive {
-
-                Text(
-                    "Your SafeWalk journey is still saved. SafeWalk needs a route before safety monitoring can resume."
-                )
-                .font(.caption)
-                .foregroundStyle(
-                    .secondary
-                )
-                .multilineTextAlignment(
-                    .center
-                )
-            }
+            Text(
+                message
+            )
+            .font(
+                .footnote
+            )
+            .foregroundStyle(
+                .secondary
+            )
+            .multilineTextAlignment(
+                .center
+            )
 
 
-            if let error =
-                routeManager
-                    .errorMessage {
-
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(
-                        .secondary
-                    )
-                    .multilineTextAlignment(
-                        .center
-                    )
-            }
-
-
-            if routeManager
-                .canRetry {
+            if routeManager.canRetry {
 
                 Button {
 
@@ -774,10 +791,7 @@ struct JourneyView: View {
                 } label: {
 
                     Label(
-                        sessionManager.isJourneyActive
-                            ? "Retry Restoration"
-                            : "Retry Route",
-
+                        "Retry Route",
                         systemImage:
                             "arrow.clockwise"
                     )
@@ -785,77 +799,20 @@ struct JourneyView: View {
                 .buttonStyle(
                     .borderedProminent
                 )
-
-            } else {
-
-                Button(
-                    sessionManager.isJourneyActive
-                        ? "Try Restoring Again"
-                        : "Try Again"
-                ) {
-
-                    calculateRoute(
-                        from:
-                            currentUserCoordinate,
-
-                        to:
-                            destinationCoordinate
-                    )
-                }
-                .buttonStyle(
-                    .borderedProminent
-                )
-            }
-
-
-            if sessionManager
-                .isJourneyActive {
-
-                Divider()
-
-
-                Text(
-                    "If you no longer want to continue this journey, you can end it."
-                )
-                .font(.caption)
-                .foregroundStyle(
-                    .secondary
-                )
-                .multilineTextAlignment(
-                    .center
-                )
-
-
-                Button(
-                    "End Saved Journey",
-                    role:
-                        .destructive
-                ) {
-
-                    finishJourney(
-                        completedSuccessfully:
-                            false
-                    )
-                }
-                .buttonStyle(
-                    .bordered
-                )
             }
         }
         .padding()
         .frame(
-            maxWidth:
-                .infinity
+            maxWidth: .infinity
         )
-        .background {
+        .background(
+            .thinMaterial
+        )
+        .clipShape(
             RoundedRectangle(
                 cornerRadius: 16
             )
-            .fill(
-                SwiftUI.Color.orange
-                    .opacity(0.08)
-            )
-        }
+        )
     }
 
 
@@ -866,32 +823,40 @@ struct JourneyView: View {
         -> some View {
 
         let manager =
-            trackingService
-                .locationManager
+            trackingService.locationManager
 
 
-        if manager
-            .locationPermissionDenied {
+        if manager.locationPermissionDenied {
 
-            VStack(spacing: 12) {
+            VStack(
+                spacing: 12
+            ) {
 
                 Image(
                     systemName:
                         "location.slash.fill"
                 )
-                .font(.system(size: 42))
-                .foregroundStyle(.red)
+                .font(
+                    .title2
+                )
+                .foregroundStyle(
+                    .orange
+                )
 
 
                 Text(
                     "Location Access Required"
                 )
-                .font(.title2)
-                .bold()
+                .font(
+                    .headline
+                )
 
 
                 Text(
-                    "SafeWalk needs your location to create routes, detect when you leave your planned path, and monitor an active journey."
+                    "SafeWalk needs your location to calculate routes, detect off-route movement and monitor your journey."
+                )
+                .font(
+                    .footnote
                 )
                 .foregroundStyle(
                     .secondary
@@ -913,86 +878,87 @@ struct JourneyView: View {
                 )
             }
             .padding()
-
+            .frame(
+                maxWidth: .infinity
+            )
+            .background(
+                .thinMaterial
+            )
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: 16
+                )
+            )
 
         } else if
-            manager
-                .hasLocationPermission &&
-            !manager
-                .isPreciseLocationEnabled {
+            manager.authorizationStatus ==
+            .notDetermined {
 
-            VStack(spacing: 10) {
+            Button(
+                "Allow Location"
+            ) {
 
-                Label(
-                    "Precise Location Is Off",
-                    systemImage:
-                        "location.circle"
-                )
-                .font(.headline)
-                .foregroundStyle(.orange)
-
-
-                Text(
-                    "SafeWalk can still receive your approximate location, but off-route detection may be less accurate."
-                )
-                .font(.caption)
-                .foregroundStyle(
-                    .secondary
-                )
-                .multilineTextAlignment(
-                    .center
-                )
-
-
-                Button(
-                    "Open Settings"
-                ) {
-
-                    manager
-                        .openSettings()
-                }
-                .buttonStyle(.bordered)
+                manager
+                    .requestLocationPermission()
             }
-            .padding()
+            .buttonStyle(
+                .borderedProminent
+            )
+        }
 
 
-        } else if
-            manager
-                .authorizationStatus ==
-                .authorizedWhenInUse {
+        if
+            sessionManager.isJourneyActive,
+            !isShowingArrivalCompletion,
+            manager.hasLocationPermission,
+            !manager.hasBackgroundPermission {
 
-            VStack(spacing: 10) {
-
-                Label(
-                    "Background Safety Limited",
-                    systemImage:
-                        "location.fill.viewfinder"
-                )
-                .font(.headline)
-
+            VStack(
+                spacing: 8
+            ) {
 
                 Text(
-                    "SafeWalk can track your journey while the app is open. Allow Always Location access for stronger background safety monitoring."
+                    "Background tracking is limited"
                 )
-                .font(.caption)
-                .foregroundStyle(
-                    .secondary
+                .font(
+                    .subheadline
                 )
-                .multilineTextAlignment(
-                    .center
+                .fontWeight(
+                    .semibold
                 )
 
 
                 Button(
-                    "Enable Background Safety"
+                    "Allow Background Location"
                 ) {
 
                     manager
                         .requestBackgroundLocationPermission()
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(
+                    .bordered
+                )
             }
             .padding()
+        }
+
+
+        if
+            manager.hasLocationPermission,
+            !manager.isPreciseLocationEnabled {
+
+            Text(
+                "Precise Location is disabled. Off-route and arrival detection may be less accurate."
+            )
+            .font(
+                .caption
+            )
+            .foregroundStyle(
+                .orange
+            )
+            .multilineTextAlignment(
+                .center
+            )
         }
     }
 
@@ -1003,64 +969,28 @@ struct JourneyView: View {
     private func notificationPermissionContent()
         -> some View {
 
-        switch notificationManager
-            .authorizationStatus {
+        if notificationManager
+            .authorizationStatus ==
+            .denied {
 
-        case .notDetermined:
+            VStack(
+                spacing: 10
+            ) {
 
-            VStack(spacing: 10) {
-
-                Label(
-                    "Safety Notifications Recommended",
-                    systemImage:
-                        "bell.badge.fill"
+                Text(
+                    "Notifications Disabled"
                 )
-                .font(.headline)
+                .font(
+                    .headline
+                )
 
 
                 Text(
-                    "SafeWalk uses notifications for off-route alerts, periodic safety check-ins, and missed check-in warnings."
+                    "Enable notifications so SafeWalk can send safety check-ins and missed check-in alerts."
                 )
-                .font(.caption)
-                .foregroundStyle(
-                    .secondary
+                .font(
+                    .footnote
                 )
-                .multilineTextAlignment(
-                    .center
-                )
-
-
-                Button(
-                    "Enable Notifications"
-                ) {
-
-                    notificationManager
-                        .requestPermission()
-                }
-                .buttonStyle(
-                    .borderedProminent
-                )
-            }
-            .padding()
-
-
-        case .denied:
-
-            VStack(spacing: 10) {
-
-                Label(
-                    "Safety Notifications Disabled",
-                    systemImage:
-                        "bell.slash.fill"
-                )
-                .font(.headline)
-                .foregroundStyle(.red)
-
-
-                Text(
-                    "SafeWalk may not be able to alert you about safety check-ins while the app is in the background."
-                )
-                .font(.caption)
                 .foregroundStyle(
                     .secondary
                 )
@@ -1076,21 +1006,27 @@ struct JourneyView: View {
                     notificationManager
                         .openSettings()
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(
+                    .bordered
+                )
             }
             .padding()
 
+        } else if
+            notificationManager
+                .authorizationStatus ==
+                .notDetermined {
 
-        case .authorized,
-             .provisional,
-             .ephemeral:
+            Button(
+                "Enable Notifications"
+            ) {
 
-            EmptyView()
-
-
-        @unknown default:
-
-            EmptyView()
+                notificationManager
+                    .requestPermission()
+            }
+            .buttonStyle(
+                .bordered
+            )
         }
     }
 
@@ -1098,53 +1034,107 @@ struct JourneyView: View {
     // MARK: - Route Information
 
     @ViewBuilder
-    private func routeInformation(
-        route: MKRoute
-    ) -> some View {
+    private var routeInformation:
+        some View {
 
-        VStack(spacing: 8) {
+        if let route =
+            displayedRoute {
 
-            Text(
-                "Walking Distance: \(route.distance / 1000, specifier: "%.2f") km"
+            HStack(
+                spacing: 30
+            ) {
+
+                VStack {
+
+                    Text(
+                        String(
+                            format:
+                                "%.2f km",
+                            route.distance / 1000
+                        )
+                    )
+                    .font(
+                        .headline
+                    )
+
+
+                    Text(
+                        "Distance"
+                    )
+                    .font(
+                        .caption
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
+                }
+
+
+                VStack {
+
+                    Text(
+                        "\(max(1, Int(route.expectedTravelTime / 60))) min"
+                    )
+                    .font(
+                        .headline
+                    )
+
+
+                    Text(
+                        "Estimated"
+                    )
+                    .font(
+                        .caption
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
+                }
+            }
+            .padding()
+            .frame(
+                maxWidth: .infinity
             )
-
-
-            Text(
-                "Estimated Time: \(Int(route.expectedTravelTime / 60)) minutes"
+            .background(
+                .thinMaterial
+            )
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: 16
+                )
             )
         }
-        .font(.headline)
     }
 
 
     // MARK: - Start Journey
 
-    @ViewBuilder
-    private func startJourneyButton(
-        route: MKRoute,
-        destinationCoordinate:
-            CLLocationCoordinate2D
-    ) -> some View {
+    private var startJourneyButton:
+        some View {
 
-        Button(
-            "Start SafeWalk"
-        ) {
+        Button {
 
-            startJourney(
-                route:
-                    route,
+            startJourney()
 
-                destinationCoordinate:
-                    destinationCoordinate
+        } label: {
+
+            Label(
+                "Start SafeWalk",
+                systemImage:
+                    "figure.walk"
+            )
+            .frame(
+                maxWidth: .infinity
             )
         }
         .buttonStyle(
             .borderedProminent
         )
-        .disabled(
-            !trackingService
-                .locationManager
-                .hasLocationPermission
+        .controlSize(
+            .large
+        )
+        .accessibilityHint(
+            "Starts location monitoring and safety check-ins for this route"
         )
     }
 
@@ -1152,87 +1142,84 @@ struct JourneyView: View {
     // MARK: - Active Journey
 
     @ViewBuilder
-    private func activeJourneyContent()
-        -> some View {
+    private var activeJourneyContent:
+        some View {
 
-        Text("Journey Active")
-            .font(.headline)
+        /*
+         Arrival has highest priority so an old
+         check-in/emergency UI cannot cover the
+         completion screen.
+         */
 
+        if
+            isShowingArrivalCompletion ||
+            sessionManager.hasArrived ||
+            trackingService
+                .journeyMonitor
+                .hasArrived {
 
-        if trackingService
-            .journeyMonitor
-            .hasArrived {
-
-            arrivalContent()
-
+            arrivalContent
 
         } else if trackingService
             .isEmergencyEscalationActive {
 
-            emergencyContent()
-
+            emergencyContent
 
         } else if trackingService
             .checkInManager
             .isCheckInActive {
 
-            checkInContent()
-
+            checkInContent
 
         } else {
 
-            normalJourneyContent()
+            normalJourneyContent
         }
     }
 
 
     // MARK: - Normal Journey
 
-    @ViewBuilder
-    private func normalJourneyContent()
-        -> some View {
+    private var normalJourneyContent:
+        some View {
 
-        VStack(spacing: 14) {
+        VStack(
+            spacing: 16
+        ) {
 
-            Text(
-                "Journey Progress"
-            )
-            .font(.headline)
+            VStack(
+                spacing: 8
+            ) {
 
+                HStack {
 
-            ProgressView(
-                value:
-                    trackingService
-                        .progressManager
-                        .progress
-            )
-
-
-            Text(
-                "\(Int(trackingService.progressManager.progress * 100))% complete"
-            )
-            .font(.caption)
-            .foregroundStyle(
-                .secondary
-            )
+                    Text(
+                        "Journey Progress"
+                    )
+                    .font(
+                        .headline
+                    )
 
 
-            Text(
-                String(
-                    format:
-                        "%.2f km remaining",
+                    Spacer()
 
-                    trackingService
-                        .progressManager
-                        .distanceRemaining /
-                        1000
+
+                    Text(
+                        "\(Int(trackingService.progressManager.progress * 100))%"
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
+                }
+
+
+                ProgressView(
+                    value:
+                        trackingService
+                            .progressManager
+                            .progress
                 )
-            )
-
-
-            Text(
-                "\(trackingService.progressManager.estimatedMinutesRemaining) min remaining"
-            )
+            }
 
 
             if trackingService
@@ -1252,23 +1239,13 @@ struct JourneyView: View {
                 Text(
                     "\(Int(trackingService.journeyMonitor.distanceFromRoute)) metres from planned route"
                 )
-                .font(.caption)
-
-            } else {
-
-                Label(
-                    "You are on your planned route",
-                    systemImage:
-                        "checkmark.circle.fill"
-                )
-                .foregroundStyle(
-                    .green
+                .font(
+                    .caption
                 )
             }
 
 
-            if trackingService
-                .isRerouting {
+            if trackingService.isRerouting {
 
                 ProgressView(
                     "Updating your route..."
@@ -1276,207 +1253,188 @@ struct JourneyView: View {
             }
 
 
-            rerouteFailureContent()
+            if let error =
+                trackingService
+                    .rerouteErrorMessage {
+
+                rerouteFailureContent(
+                    message: error
+                )
+            }
 
 
-            if sessionManager
-                .hasBeenRerouted {
+            if sessionManager.rerouteCount > 0 {
 
                 Label(
-                    "Route updated \(sessionManager.rerouteCount) time\(sessionManager.rerouteCount == 1 ? "" : "s")",
+                    "\(sessionManager.rerouteCount) route update\(sessionManager.rerouteCount == 1 ? "" : "s")",
                     systemImage:
-                        "arrow.triangle.branch"
+                        "arrow.triangle.2.circlepath"
                 )
-                .font(.caption)
+                .font(
+                    .caption
+                )
                 .foregroundStyle(
                     .secondary
                 )
             }
 
 
-            if trackingService
-                .periodicCheckInManager
-                .isRunning {
+            VStack(
+                spacing: 4
+            ) {
 
-                VStack(spacing: 4) {
+                Text(
+                    "Next safety check-in"
+                )
+                .font(
+                    .caption
+                )
+                .foregroundStyle(
+                    .secondary
+                )
 
-                    Text(
-                        "Next safety check-in"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(
-                        .secondary
-                    )
 
-
-                    Text(
-                        "\(trackingService.periodicCheckInManager.secondsUntilNextCheckIn) sec"
-                    )
-                    .font(.headline)
-                }
+                Text(
+                    "\(trackingService.periodicCheckInManager.secondsUntilNextCheckIn) sec"
+                )
+                .font(
+                    .headline
+                )
             }
 
 
-            distanceToDestinationContent()
+            distanceToDestinationContent
 
-            backgroundTrackingContent()
+            backgroundTrackingContent
 
-            endJourneyButton()
+            endJourneyButton
         }
+        .padding()
+        .frame(
+            maxWidth: .infinity
+        )
+        .background(
+            .thinMaterial
+        )
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: 18
+            )
+        )
     }
 
 
     // MARK: - Reroute Failure
 
     @ViewBuilder
-    private func rerouteFailureContent()
-        -> some View {
+    private func rerouteFailureContent(
+        message: String
+    ) -> some View {
 
-        if let error =
-            trackingService
-                .rerouteErrorMessage {
+        VStack(
+            spacing: 10
+        ) {
 
-            VStack(spacing: 12) {
+            Label(
+                "Route update failed",
+                systemImage:
+                    "exclamationmark.triangle"
+            )
+            .font(
+                .headline
+            )
+            .foregroundStyle(
+                .orange
+            )
 
-                Image(
-                    systemName:
-                        "arrow.triangle.2.circlepath.circle.fill"
+
+            Text(
+                message
+            )
+            .font(
+                .caption
+            )
+            .foregroundStyle(
+                .secondary
+            )
+            .multilineTextAlignment(
+                .center
+            )
+
+
+            if trackingService.canRetryReroute {
+
+                Button(
+                    "Retry Route Update"
+                ) {
+
+                    trackingService
+                        .retryReroute()
+                }
+                .buttonStyle(
+                    .bordered
                 )
-                .font(.system(size: 36))
-                .foregroundStyle(.orange)
+                .accessibilityHint(
+                    "Attempts to calculate the replacement walking route again"
+                )
+            }
+        }
+        .padding()
+    }
 
+
+    // MARK: - Check-In
+
+    private var checkInContent:
+        some View {
+
+        VStack(
+            spacing: 18
+        ) {
+
+            Image(
+                systemName:
+                    "hand.raised.fill"
+            )
+            .font(
+                .system(
+                    size: 44
+                )
+            )
+            .foregroundStyle(
+                .orange
+            )
+
+
+            Text(
+                "Are you okay?"
+            )
+            .font(
+                .title2
+            )
+            .fontWeight(
+                .bold
+            )
+
+
+            if trackingService
+                .checkInManager
+                .reason == .offRoute {
 
                 Text(
-                    "Unable to Update Route"
-                )
-                .font(.headline)
-
-
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(
-                        .secondary
-                    )
-                    .multilineTextAlignment(
-                        .center
-                    )
-
-
-                Text(
-                    "Your previous route is still available and your SafeWalk journey remains active."
-                )
-                .font(.caption)
-                .foregroundStyle(
-                    .secondary
+                    "SafeWalk detected that you've moved away from your planned route."
                 )
                 .multilineTextAlignment(
                     .center
                 )
 
-
-                if trackingService
-                    .canRetryReroute {
-
-                    Button {
-
-                        trackingService
-                            .retryReroute()
-
-                    } label: {
-
-                        Label(
-                            "Retry Reroute",
-                            systemImage:
-                                "arrow.clockwise"
-                        )
-                    }
-                    .buttonStyle(
-                        .borderedProminent
-                    )
-                    .disabled(
-                        trackingService
-                            .isRerouting
-                    )
-                }
-
-
-                Button(
-                    "Dismiss"
-                ) {
-
-                    trackingService
-                        .clearRerouteError()
-                }
-                .buttonStyle(.bordered)
-            }
-            .padding()
-            .frame(
-                maxWidth:
-                    .infinity
-            )
-            .background {
-                RoundedRectangle(
-                    cornerRadius: 16
-                )
-                .fill(
-                    SwiftUI.Color.orange
-                        .opacity(0.08)
-                )
-            }
-        }
-    }
-
-
-    // MARK: - Check In
-
-    @ViewBuilder
-    private func checkInContent()
-        -> some View {
-
-        VStack(spacing: 16) {
-
-            let reason =
-                trackingService
-                    .checkInManager
-                    .reason
-
-
-            Image(
-                systemName:
-                    reason == .offRoute
-                        ? "exclamationmark.triangle.fill"
-                        : "checkmark.shield.fill"
-            )
-            .font(.system(size: 50))
-            .foregroundStyle(
-                reason == .offRoute
-                    ? .orange
-                    : .blue
-            )
-
-
-            if reason == .offRoute {
-
-                Text("Are you okay?")
-                    .font(.title2)
-                    .bold()
-
-
-                Text(
-                    "You've moved away from your planned route."
-                )
-
             } else {
 
                 Text(
-                    "Safety Check-In"
+                    "This is your scheduled safety check-in."
                 )
-                .font(.title2)
-                .bold()
-
-
-                Text(
-                    "This is your scheduled SafeWalk safety check-in."
+                .multilineTextAlignment(
+                    .center
                 )
             }
 
@@ -1486,7 +1444,7 @@ struct JourneyView: View {
             )
             .font(
                 .system(
-                    size: 52,
+                    size: 46,
                     weight: .bold,
                     design: .rounded
                 )
@@ -1496,69 +1454,115 @@ struct JourneyView: View {
             Text(
                 "seconds remaining"
             )
+            .font(
+                .caption
+            )
             .foregroundStyle(
                 .secondary
             )
 
 
-            Button(
-                "I'm Safe"
-            ) {
+            Button {
 
                 trackingService
                     .confirmSafe()
+
+            } label: {
+
+                Label(
+                    "I'm Safe",
+                    systemImage:
+                        "checkmark.shield.fill"
+                )
+                .frame(
+                    maxWidth: .infinity
+                )
             }
             .buttonStyle(
                 .borderedProminent
             )
-
-
-            distanceToDestinationContent()
-
-            backgroundTrackingContent()
-
-            endJourneyButton()
+            .controlSize(
+                .large
+            )
+            .accessibilityHint(
+                "Confirms your safety and continues the journey"
+            )
         }
+        .padding()
+        .frame(
+            maxWidth: .infinity
+        )
+        .background(
+            .orange.opacity(0.08)
+        )
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: 18
+            )
+        )
     }
 
 
     // MARK: - Emergency
 
-    @ViewBuilder
-    private func emergencyContent()
-        -> some View {
+    private var emergencyContent:
+        some View {
 
-        VStack(spacing: 16) {
+        VStack(
+            spacing: 18
+        ) {
 
             Image(
                 systemName:
                     "exclamationmark.triangle.fill"
             )
-            .font(.system(size: 60))
-            .foregroundStyle(.red)
+            .font(
+                .system(
+                    size: 48
+                )
+            )
+            .foregroundStyle(
+                .red
+            )
 
 
             Text(
                 "Check-In Missed"
             )
-            .font(.title2)
-            .bold()
+            .font(
+                .title2
+            )
+            .fontWeight(
+                .bold
+            )
 
 
             Text(
-                "You didn't respond to the SafeWalk safety check-in."
+                "You didn't respond to your safety check-in. Confirm you're safe or use the emergency options."
+            )
+            .foregroundStyle(
+                .secondary
             )
             .multilineTextAlignment(
                 .center
             )
 
 
-            Button(
-                "I'm Safe"
-            ) {
+            Button {
 
                 trackingService
                     .confirmSafe()
+
+            } label: {
+
+                Label(
+                    "I'm Safe",
+                    systemImage:
+                        "checkmark.shield.fill"
+                )
+                .frame(
+                    maxWidth: .infinity
+                )
             }
             .buttonStyle(
                 .borderedProminent
@@ -1568,87 +1572,268 @@ struct JourneyView: View {
             NavigationLink {
 
                 EmergencyView()
-                    .environmentObject(
-                        trackingService
-                    )
 
             } label: {
 
                 Label(
                     "Emergency Options",
                     systemImage:
-                        "cross.case.fill"
+                        "sos.circle.fill"
+                )
+                .frame(
+                    maxWidth: .infinity
                 )
             }
-            .buttonStyle(.bordered)
-
-
-            endJourneyButton()
+            .buttonStyle(
+                .bordered
+            )
+            .tint(
+                .red
+            )
+            .accessibilityHint(
+                "Opens contact, calling, messaging and location-sharing options"
+            )
         }
+        .padding()
+        .frame(
+            maxWidth: .infinity
+        )
+        .background(
+            .red.opacity(0.08)
+        )
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: 18
+            )
+        )
     }
 
 
-    // MARK: - Arrival
+    // MARK: - Arrival Completion
 
-    @ViewBuilder
-    private func arrivalContent()
-        -> some View {
+    private var arrivalContent:
+        some View {
 
-        VStack(spacing: 16) {
+        VStack(
+            spacing: 18
+        ) {
 
             Image(
                 systemName:
                     "checkmark.circle.fill"
             )
-            .font(.system(size: 60))
+            .font(
+                .system(
+                    size: 56
+                )
+            )
             .foregroundStyle(
                 .green
             )
 
 
-            Text("You've Arrived")
-                .font(.title)
-                .bold()
+            Text(
+                "You've Arrived"
+            )
+            .font(
+                .title
+            )
+            .fontWeight(
+                .bold
+            )
 
 
             Text(
-                "SafeWalk completed successfully."
+                currentDestination
+            )
+            .font(
+                .headline
+            )
+            .multilineTextAlignment(
+                .center
+            )
+
+
+            Text(
+                "Your SafeWalk journey has been completed successfully."
+            )
+            .font(
+                .subheadline
             )
             .foregroundStyle(
                 .secondary
             )
+            .multilineTextAlignment(
+                .center
+            )
 
 
-            Button(
-                "Finish Journey"
+            Divider()
+
+
+            HStack(
+                spacing: 30
             ) {
 
-                finishJourney(
-                    completedSuccessfully:
-                        true
+                VStack(
+                    spacing: 4
+                ) {
+
+                    Text(
+                        String(
+                            format:
+                                "%.2f km",
+                            completionDistance / 1000
+                        )
+                    )
+                    .font(
+                        .headline
+                    )
+
+
+                    Text(
+                        "Distance"
+                    )
+                    .font(
+                        .caption
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
+                }
+
+
+                VStack(
+                    spacing: 4
+                ) {
+
+                    Text(
+                        "\(journeyDurationMinutes) min"
+                    )
+                    .font(
+                        .headline
+                    )
+
+
+                    Text(
+                        "Duration"
+                    )
+                    .font(
+                        .caption
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
+                }
+
+
+                VStack(
+                    spacing: 4
+                ) {
+
+                    Text(
+                        "\(sessionManager.rerouteCount)"
+                    )
+                    .font(
+                        .headline
+                    )
+
+
+                    Text(
+                        "Reroutes"
+                    )
+                    .font(
+                        .caption
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
+                }
+            }
+
+
+            Label(
+                "Arrived safely",
+                systemImage:
+                    "checkmark.shield.fill"
+            )
+            .foregroundStyle(
+                .green
+            )
+            .fontWeight(
+                .semibold
+            )
+
+
+            Button {
+
+                completeJourneyOnArrival()
+
+            } label: {
+
+                Label(
+                    "Finish Journey",
+                    systemImage:
+                        "checkmark"
+                )
+                .frame(
+                    maxWidth: .infinity
                 )
             }
             .buttonStyle(
                 .borderedProminent
             )
+            .controlSize(
+                .large
+            )
+            .accessibilityHint(
+                "Saves the completed journey once and clears the active session"
+            )
         }
+        .padding()
+        .frame(
+            maxWidth: .infinity
+        )
+        .background(
+            .thinMaterial
+        )
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: 20
+            )
+        )
     }
 
 
-    // MARK: - Distance
+    // MARK: - Distance Remaining
 
-    @ViewBuilder
-    private func distanceToDestinationContent()
-        -> some View {
+    private var distanceToDestinationContent:
+        some View {
 
-        if trackingService
-            .journeyMonitor
-            .distanceToDestination > 0 {
+        VStack(
+            spacing: 5
+        ) {
 
             Text(
-                "Distance to destination: \(Int(trackingService.journeyMonitor.distanceToDestination)) m"
+                String(
+                    format:
+                        "%.2f km remaining",
+                    trackingService
+                        .progressManager
+                        .distanceRemaining / 1000
+                )
             )
-            .font(.caption)
+            .font(
+                .headline
+            )
+
+
+            Text(
+                "\(trackingService.progressManager.estimatedMinutesRemaining) min estimated"
+            )
+            .font(
+                .caption
+            )
             .foregroundStyle(
                 .secondary
             )
@@ -1659,19 +1844,35 @@ struct JourneyView: View {
     // MARK: - Background Tracking
 
     @ViewBuilder
-    private func backgroundTrackingContent()
-        -> some View {
+    private var backgroundTrackingContent:
+        some View {
 
         if trackingService
             .locationManager
             .isBackgroundTrackingEnabled {
 
             Label(
-                "Background safety tracking active",
+                "Background safety tracking enabled",
                 systemImage:
                     "location.fill"
             )
-            .font(.caption)
+            .font(
+                .caption
+            )
+            .foregroundStyle(
+                .green
+            )
+
+        } else {
+
+            Label(
+                "Background tracking limited",
+                systemImage:
+                    "location.slash"
+            )
+            .font(
+                .caption
+            )
             .foregroundStyle(
                 .secondary
             )
@@ -1679,224 +1880,307 @@ struct JourneyView: View {
     }
 
 
-    // MARK: - End Journey
+    // MARK: - End Journey Button
 
-    @ViewBuilder
-    private func endJourneyButton()
-        -> some View {
+    private var endJourneyButton:
+        some View {
 
         Button(
-            "End Journey",
             role: .destructive
         ) {
 
-            finishJourney(
-                completedSuccessfully:
-                    false
+            finishJourney()
+
+        } label: {
+
+            Label(
+                "End Journey",
+                systemImage:
+                    "xmark.circle"
+            )
+            .frame(
+                maxWidth: .infinity
             )
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(
+            .bordered
+        )
+        .accessibilityHint(
+            "Saves this journey as ended before arrival and stops monitoring"
+        )
     }
 
 
     // MARK: - Waiting
 
-    @ViewBuilder
-    private func waitingContent()
-        -> some View {
+    private var waitingContent:
+        some View {
 
-        if trackingService
-            .locationManager
-            .locationPermissionDenied {
+        VStack(
+            spacing: 12
+        ) {
 
-            EmptyView()
-
-        } else {
-
-            VStack(spacing: 10) {
-
-                ProgressView()
+            ProgressView()
 
 
-                Text(
-                    sessionManager.isJourneyActive
-                        ? "Getting your location to restore your journey..."
-                        : "Getting your current location..."
-                )
-                .foregroundStyle(
-                    .secondary
-                )
-                .multilineTextAlignment(
-                    .center
-                )
-            }
+            Text(
+                "Waiting for location and destination..."
+            )
+            .foregroundStyle(
+                .secondary
+            )
+            .multilineTextAlignment(
+                .center
+            )
         }
+        .padding()
     }
 
 
     // MARK: - Calculate Route
 
-    private func calculateRoute(
-        from start:
-            CLLocationCoordinate2D,
-
-        to destination:
-            CLLocationCoordinate2D
-    ) {
-
-        routeManager
-            .calculateRoute(
-                from:
-                    start,
-
-                to:
-                    destination
-            )
-    }
-
-
-    // MARK: - Prepare
-
-    private func prepareJourney() {
-
-        trackingService
-            .prepareLocation()
-
-
-        if sessionManager
-            .isJourneyActive {
-
-            journeyStartDate =
-                sessionManager
-                    .journeyStartDate
-
-
-            /*
-             Record that the user has reopened
-             the persisted active session.
-             */
-
-            sessionManager
-                .markSessionActive()
-
-
-            return
-        }
-
-
-        if let selectedDestination {
-
-            destinationSearch
-                .selectDestination(
-                    selectedDestination
-                )
-
-        } else {
-
-            destinationSearch
-                .search(
-                    for:
-                        destination
-                )
-        }
-    }
-
-
-    // MARK: - Handle GPS Location
-
-    private func handleLocation(
-        _ location: CLLocation
-    ) {
+    private func calculateRoute() {
 
         guard
-            let destination =
-                currentDestinationCoordinate
+            let current =
+                trackingService
+                    .locationManager
+                    .location
         else {
             return
         }
 
 
-        // MARK: Restore Persisted Journey
+        guard
+            let destinationCoordinate =
+                currentDestinationCoordinate
+        else {
 
-        if sessionManager
-            .isJourneyActive {
+            if !destination.isEmpty {
 
-            /*
-             After a cold launch, the MKRoute
-             itself no longer exists in memory.
-
-             Rebuild it from the user's current
-             position to the saved destination.
-
-             errorMessage == nil prevents every
-             GPS update from repeatedly retrying
-             a failed MapKit request.
-             */
-
-            if routeManager.route == nil &&
-                !routeManager.isLoading &&
-                routeManager.errorMessage == nil &&
-                !trackingService.isTracking {
-
-                calculateRoute(
-                    from:
-                        location.coordinate,
-
-                    to:
-                        destination
-                )
+                destinationSearch
+                    .search(
+                        for: destination
+                    )
             }
-
 
             return
         }
 
 
-        // MARK: New Journey
-
-        /*
-         Do not continually retry automatically
-         after a route failure.
-
-         The user explicitly chooses Retry.
-         */
-
-        if routeManager.route == nil &&
-            !routeManager.isLoading &&
-            routeManager.errorMessage == nil {
-
-            calculateRoute(
+        routeManager
+            .calculateRoute(
                 from:
-                    location.coordinate,
+                    current.coordinate,
 
                 to:
-                    destination
+                    destinationCoordinate
             )
+    }
+
+
+    // MARK: - Prepare Journey
+
+    private func prepareJourney() {
+
+        if sessionManager.isJourneyActive {
+
+            journeyStartDate =
+                sessionManager.journeyStartDate
+
+
+            /*
+             If JourneyMonitor has already
+             detected arrival during this view's
+             lifetime, preserve completion UI.
+             */
+
+            if sessionManager.hasArrived {
+
+                isShowingArrivalCompletion = true
+                trackingService.stopTracking()
+                return
+            }
+
+            if trackingService
+                .journeyMonitor
+                .hasArrived {
+
+                isShowingArrivalCompletion =
+                    true
+
+                return
+            }
+
+            trackingService
+                .prepareLocation()
+
+
+            guard
+                let current =
+                    trackingService
+                        .locationManager
+                        .location,
+
+                let destinationCoordinate =
+                    currentDestinationCoordinate
+            else {
+                return
+            }
+
+
+            if
+                !trackingService.isTracking,
+                routeManager.route == nil,
+                routeManager.errorMessage == nil {
+
+                routeManager
+                    .calculateRoute(
+                        from:
+                            current.coordinate,
+
+                        to:
+                            destinationCoordinate
+                    )
+            }
+
+            return
+        }
+
+        trackingService
+            .prepareLocation()
+
+
+        if selectedDestination != nil {
+
+            calculateRoute()
+
+            return
+        }
+
+
+        if !destination.isEmpty {
+
+            destinationSearch
+                .search(
+                    for: destination
+                )
+        }
+    }
+
+
+    // MARK: - Handle Location
+
+    private func handleLocation(
+        _ location: CLLocation
+    ) {
+
+        if sessionManager.isJourneyActive {
+
+            if sessionManager.hasArrived {
+                isShowingArrivalCompletion = true
+                return
+            }
+
+            /*
+             Once arrival has been detected, don't
+             reconstruct or modify navigation.
+             */
+
+            if isShowingArrivalCompletion {
+                return
+            }
+
+
+            guard
+                !trackingService.isTracking,
+                routeManager.route == nil,
+                !routeManager.isLoading,
+                routeManager.errorMessage == nil,
+                let destinationCoordinate =
+                    currentDestinationCoordinate
+            else {
+                return
+            }
+
+
+            routeManager
+                .calculateRoute(
+                    from:
+                        location.coordinate,
+
+                    to:
+                        destinationCoordinate
+                )
+
+            return
+        }
+
+
+        /*
+         A selected MKMapItem can reach this view
+         before Core Location has produced its
+         first reading. Start the route as soon as
+         that reading arrives.
+         */
+
+        if
+            currentDestinationCoordinate != nil,
+            routeManager.route == nil,
+            !routeManager.isLoading,
+            routeManager.errorMessage == nil {
+
+            calculateRoute()
+
+            return
+        }
+
+
+        if
+            selectedDestination == nil,
+            destinationSearch
+                .selectedDestination == nil,
+            destinationSearch
+                .searchResults
+                .isEmpty,
+            !destination.isEmpty,
+            !destinationSearch
+                .isSearching {
+
+            destinationSearch
+                .search(
+                    for: destination
+                )
         }
     }
 
 
     // MARK: - Start Journey
 
-    private func startJourney(
-        route: MKRoute,
+    private func startJourney() {
 
-        destinationCoordinate:
-            CLLocationCoordinate2D
-    ) {
+        guard
+            let route =
+                displayedRoute,
+
+            let destinationCoordinate =
+                currentDestinationCoordinate
+        else {
+            return
+        }
+
 
         journeyStartDate =
             Date()
 
-        journeyWentOffRoute =
+        isShowingArrivalCompletion =
             false
 
-        journeyCheckInTriggered =
-            false
 
-        journeyCheckInExpired =
-            false
-
+        /*
+         Uses the exact JourneySessionManager API:
+         destination + coordinate + distance.
+         */
 
         sessionManager
             .startJourney(
@@ -1911,6 +2195,15 @@ struct JourneyView: View {
             )
 
 
+        /*
+         Use the persisted start date as the
+         canonical start time.
+         */
+
+        journeyStartDate =
+            sessionManager.journeyStartDate
+
+
         trackingService
             .startTracking(
                 route:
@@ -1922,34 +2215,42 @@ struct JourneyView: View {
     }
 
 
-    // MARK: - Finish Journey
+    // MARK: - Manual Journey Finish
 
-    private func finishJourney(
-        completedSuccessfully:
-            Bool
-    ) {
+    private func finishJourney() {
+
+        guard
+            sessionManager.isJourneyActive,
+            let journeyID = sessionManager.journeyID
+        else {
+            return
+        }
+
+
+        let completedDestination =
+            currentDestination
+
+
+        let startDate =
+            sessionManager.journeyStartDate
+            ?? journeyStartDate
+            ?? Date()
+
 
         let plannedDistance =
-            sessionManager
-                .originalPlannedDistance > 0
-
-                ? sessionManager
-                    .originalPlannedDistance
-
-                : displayedRoute?
-                    .distance ?? 0
+            completionDistance
 
 
-        historyManager
+        let saved = historyManager
             .addJourney(
+                id:
+                    journeyID,
+
                 destination:
-                    currentDestination,
+                    completedDestination,
 
                 startDate:
-                    journeyStartDate ??
-                    sessionManager
-                        .journeyStartDate ??
-                    Date(),
+                    startDate,
 
                 endDate:
                     Date(),
@@ -1958,27 +2259,21 @@ struct JourneyView: View {
                     plannedDistance,
 
                 completedSuccessfully:
-                    completedSuccessfully,
+                    false,
 
                 wentOffRoute:
-                    journeyWentOffRoute ||
-                    trackingService
-                        .journeyMonitor
-                        .isOffRoute,
+                    sessionManager.wentOffRoute,
 
                 checkInTriggered:
-                    journeyCheckInTriggered ||
-                    trackingService
-                        .checkInManager
-                        .isCheckInActive ||
-                    trackingService
-                        .isEmergencyEscalationActive,
+                    sessionManager.checkInTriggered,
 
                 checkInExpired:
-                    journeyCheckInExpired ||
-                    trackingService
-                        .isEmergencyEscalationActive
+                    sessionManager.checkInExpired
             )
+
+        guard saved else {
+            return
+        }
 
 
         trackingService
@@ -1989,24 +2284,106 @@ struct JourneyView: View {
             .endJourney()
 
 
-        destinationSearch
-            .clearSelection()
+        resetLocalJourneyState()
+    }
 
 
-        routeManager
-            .clearRoute()
+    // MARK: - Complete Journey On Arrival
 
+    private func completeJourneyOnArrival() {
+
+        guard
+            sessionManager.isJourneyActive,
+            let journeyID = sessionManager.journeyID
+        else {
+            return
+        }
+
+
+        /*
+         Capture everything BEFORE clearing the
+         active session.
+         */
+
+        let completedDestination =
+            currentDestination
+
+
+        let startDate =
+            sessionManager.journeyStartDate
+            ?? journeyStartDate
+            ?? Date()
+
+
+        let plannedDistance =
+            completionDistance
+
+
+        let saved = historyManager
+            .addJourney(
+                id:
+                    journeyID,
+
+                destination:
+                    completedDestination,
+
+                startDate:
+                    startDate,
+
+                endDate:
+                    Date(),
+
+                plannedDistance:
+                    plannedDistance,
+
+                completedSuccessfully:
+                    true,
+
+                wentOffRoute:
+                    sessionManager.wentOffRoute,
+
+                checkInTriggered:
+                    sessionManager.checkInTriggered,
+
+                checkInExpired:
+                    sessionManager.checkInExpired
+            )
+
+        guard saved else {
+            return
+        }
+
+
+        /*
+         Stop location, route monitoring,
+         check-ins, periodic timer and rerouting.
+         */
+
+        trackingService
+            .stopTracking()
+
+
+        /*
+         Clear persisted journey only AFTER the
+         successful history record exists.
+         */
+
+        sessionManager
+            .endJourney()
+
+
+        resetLocalJourneyState()
+    }
+
+
+    // MARK: - Reset Local State
+
+    private func resetLocalJourneyState() {
 
         journeyStartDate =
             nil
 
-        journeyWentOffRoute =
-            false
-
-        journeyCheckInTriggered =
-            false
-
-        journeyCheckInExpired =
+        isShowingArrivalCompletion =
             false
     }
 }
@@ -2016,6 +2393,16 @@ struct JourneyView: View {
 
 #Preview {
 
+    let sessionManager =
+        JourneySessionManager()
+
+    let trackingService =
+        JourneyTrackingService(
+            sessionManager:
+                sessionManager
+        )
+
+
     NavigationStack {
 
         JourneyView(
@@ -2024,10 +2411,9 @@ struct JourneyView: View {
         )
     }
     .environmentObject(
-        JourneySessionManager()
+        sessionManager
     )
     .environmentObject(
-        JourneyTrackingService()
+        trackingService
     )
 }
-

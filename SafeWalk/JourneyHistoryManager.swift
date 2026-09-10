@@ -48,7 +48,9 @@ final class JourneyHistoryManager: ObservableObject {
 
     // MARK: - Add Journey
 
+    @discardableResult
     func addJourney(
+        id: UUID = UUID(),
         destination: String,
         startDate: Date,
         endDate: Date = Date(),
@@ -57,10 +59,14 @@ final class JourneyHistoryManager: ObservableObject {
         wentOffRoute: Bool,
         checkInTriggered: Bool,
         checkInExpired: Bool
-    ) {
+    ) -> Bool {
+
+        if journeys.contains(where: { $0.id == id }) {
+            return true
+        }
 
         let record = JourneyRecord(
-            id: UUID(),
+            id: id,
             destination: destination,
             startDate: startDate,
             endDate: endDate,
@@ -71,9 +77,17 @@ final class JourneyHistoryManager: ObservableObject {
             checkInExpired: checkInExpired
         )
 
-        journeys.insert(record, at: 0)
+        var updatedJourneys = journeys
+        updatedJourneys.insert(record, at: 0)
 
-        saveHistory()
+        guard let data = try? JSONEncoder().encode(updatedJourneys) else {
+            return false
+        }
+
+        UserDefaults.standard.set(data, forKey: storageKey)
+        journeys = updatedJourneys
+
+        return true
     }
 
 
@@ -114,11 +128,7 @@ final class JourneyHistoryManager: ObservableObject {
             )
 
         } catch {
-
-            print(
-                "Failed to save journey history:",
-                error
-            )
+            return
         }
     }
 
@@ -144,11 +154,7 @@ final class JourneyHistoryManager: ObservableObject {
                 )
 
         } catch {
-
-            print(
-                "Failed to load journey history:",
-                error
-            )
+            journeys = []
         }
     }
 }
